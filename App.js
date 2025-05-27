@@ -16,7 +16,9 @@ import {
   Image,
   ImageBackground,
   Animated,
-  TouchableOpacity
+  ScrollView,
+  TouchableOpacity,
+  Dimensions
 } from 'react-native';
 import bgImage from './assets/background.png';
 
@@ -108,74 +110,84 @@ export default function App() {
 
           {/* 設定モーダル */}
           <Modal visible={settingsVisible} animationType="slide" transparent={true}>
-            <View style={styles.settingBackground}>
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={styles.modalOverlayTouchable} />
-              </TouchableWithoutFeedback>
-
-              <View style={styles.settingContent}>
-                <Text style={styles.settingTitle}>設定</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="ユーザーID"
-                  value={tempUserId}
-                  onChangeText={setTempUserId}
-                />
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="サーバーIPアドレス"
-                  value={tempIP}
-                  onChangeText={setTempIP}
-                />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Pressable style={styles.modalButton} onPress={saveSettings}>
-                    <Text style={{ color: '#fff' }}>保存</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.modalButton, { backgroundColor: '#999' }]}
-                    onPress={cancelSettings}
-                  >
-                    <Text style={{ color: '#fff' }}>キャンセル</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </Modal>
-          {/* 執筆モーダル */}
-          <Modal visible={writingVisible} animationType="slide" transparent={true}>
-            <View style={styles.modalOverlay}>
-              {/* モーダル背景部分だけ Touchable にする */}
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={styles.modalOverlayTouchable} />
-              </TouchableWithoutFeedback>
-            
-              {/* 手紙コンテンツは dismiss 対象にしない */}
-              <Animated.View style={[styles.letterNoteContainer, { transform: [{ translateY: slideAnim }] }]}>
-                <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={styles.overlay}>
+                <View style={styles.settingContent}>
+                  <Text style={styles.settingTitle}>設定</Text>
                   <TextInput
-                    style={styles.letterInput}
-                    multiline
-                    placeholder="ここにメッセージを入力"
-                    value={message}
-                    onChangeText={setMessage}
+                    style={styles.modalInput}
+                    placeholder="ユーザーID"
+                    value={tempUserId}
+                    onChangeText={setTempUserId}
                   />
-                  <View style={styles.letterButtons}>
-                    <Pressable onPress={sendMessage} style={styles.letterSend}>
-                      <Text style={{ color: '#fff' }}>送信する</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="サーバーIPアドレス"
+                    value={tempIP}
+                    onChangeText={setTempIP}
+                  />
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Pressable style={styles.modalButton} onPress={saveSettings}>
+                      <Text style={{ color: '#fff' }}>保存</Text>
                     </Pressable>
-                    <Pressable onPress={() => {
-                      Animated.timing(slideAnim, {
-                        toValue: 800,
-                        duration: 300,
-                        useNativeDriver: true,
-                      }).start(() => setWritingVisible(false));
-                    }} style={[styles.letterSend, { backgroundColor: '#888' }]}>
+                    <Pressable
+                      style={[styles.modalButton, { backgroundColor: '#999' }]}
+                      onPress={cancelSettings}
+                    >
                       <Text style={{ color: '#fff' }}>キャンセル</Text>
                     </Pressable>
                   </View>
-                </ImageBackground>
-              </Animated.View>
-            </View>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+          {/* 執筆モーダル */}
+          <Modal visible={writingVisible} animationType="slide" transparent={true}>
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              keyboardVerticalOffset={60}
+            >
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.overlay}>
+                  <ScrollView
+                    contentContainerStyle={{ 
+                      flexGrow: 1,
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                  {/* 手紙コンテンツは dismiss 対象にしない */}
+                  <Animated.View style={[styles.letterNoteContainer, { transform: [{ translateY: slideAnim }] }]}>
+                    <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
+                      <TextInput
+                        style={styles.letterInput}
+                        multiline
+                        placeholder="ここにメッセージを入力"
+                        value={message}
+                        onChangeText={setMessage}
+                      />
+                      <View style={styles.letterButtons}>
+                        <Pressable onPress={sendMessage} style={styles.letterSend}>
+                          <Text style={{ color: '#fff' }}>送信する</Text>
+                        </Pressable>
+                        <Pressable onPress={() => {
+                          Animated.timing(slideAnim, {
+                            toValue: 800,
+                            duration: 300,
+                            useNativeDriver: true,
+                          }).start(() => setWritingVisible(false));
+                        }} style={[styles.letterSend, { backgroundColor: '#888' }]}>
+                          <Text style={{ color: '#fff' }}>キャンセル</Text>
+                        </Pressable>
+                      </View>
+                    </ImageBackground>
+                  </Animated.View>
+                  </ScrollView>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </Modal>
         </View>
       </ImageBackground>
@@ -190,24 +202,23 @@ const styles = StyleSheet.create({
     // backgroundColor: '#fff',
     justifyContent: 'center',
   },
-  modalOverlayTouchable: {
+  overlay: {
+    flex: 1,
     position: 'absolute',
     top: 0,
     bottom: 0,
     left: 0,
     right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
   settingsButton: {
     position: 'absolute',
     top: 0,
     right: 0,
     zIndex: 10,
-  },
-  settingBackground: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   settingContent: {
     width: '85%',
@@ -242,15 +253,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
+  // 執筆モードのスタイル
   letterNoteContainer: {
-    width: '80%',
+    width: Dimensions.get('window').width * 0.8,
     height: 480,
   },
 
