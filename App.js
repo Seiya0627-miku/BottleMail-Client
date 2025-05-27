@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   TextInput,
@@ -13,115 +13,172 @@ import {
   Modal,
   Text,
   Pressable,
+  Image,
+  ImageBackground,
+  Animated,
+  TouchableOpacity
 } from 'react-native';
+import bgImage from './assets/background.png';
 
 export default function App() {
   const [message, setMessage] = useState('');
-  const [sender, setSender] = useState('user_abc');
+
+  const [userId, setUserId] = useState('user_abc');
   const [serverIP, setServerIP] = useState('http://172.20.10.2:8000'); // デフォルト値
-  const [settingsVisible, setSettingsVisible] = useState(false);
-  const [tempSender, setTempSender] = useState(sender);
+  const [tempUserId, setTempUserId] = useState(userId);
   const [tempIP, setTempIP] = useState(serverIP);
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
-const [statusMessage, setStatusMessage] = useState('');
+  const [writingVisible, setWritingVisible] = useState(false);
+  const slideAnim = useRef(new Animated.Value(800)).current; // 初期位置は画面外下部
 
-const sendMessage = async () => {
-  if (!message.trim()) {
-    Alert.alert('エラー', 'メッセージを入力してください');
-    return;
-  }
+  const [statusMessage, setStatusMessage] = useState('');
 
-  setStatusMessage('📤 送信中…');
-
-  const currentServerIP = tempIP || serverIP;  // 念のため fallback もつける
-  const url = `${currentServerIP}/send`;
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sender, message }),
-    });
-
-    const data = await res.json();
-    if (data.status === 'received') {
-      setStatusMessage('✅ 送信成功！');
-      setMessage('');
-    } else {
-      setStatusMessage('⚠️ 送信失敗');
+  const sendMessage = async () => {
+    if (!message.trim()) {
+      Alert.alert('エラー', 'メッセージを入力してください');
+      return;
     }
-  } catch (e) {
-    console.error(e);
-    setStatusMessage('🚫 ネットワークエラー');
-  }
 
-  setTimeout(() => setStatusMessage(''), 1000);
-};
+    setStatusMessage('📤 送信中…');
+
+    const currentServerIP = tempIP || serverIP;  // 念のため fallback もつける
+    const url = `${currentServerIP}/send`;
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, message }),
+      });
+
+      const data = await res.json();
+      if (data.status === 'received') {
+        setStatusMessage('✅ 送信成功！');
+        setMessage('');
+      } else {
+        setStatusMessage('⚠️ 送信失敗');
+      }
+    } catch (e) {
+      console.error(e);
+      setStatusMessage('🚫 ネットワークエラー');
+    }
+
+    setTimeout(() => setStatusMessage(''), 1000);
+  };
 
   const saveSettings = () => {
-    setSender(tempSender);
+    setUserId(tempUserId);
     setServerIP(tempIP);
     setSettingsVisible(false);
+  };
+  const cancelSettings = () => {
+    setTempUserId(userId); // 元の値に戻す
+    setTempIP(serverIP); // 元の値に戻す
+    setSettingsVisible(false); // ステートは変更しない
   };
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      <ImageBackground
+        source={bgImage}
+        style={styles.container}
+        resizeMode="cover" // 画面比率を満たすように拡大。必要に応じて contain/stretch に
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.container}>
-            {/* 設定ボタン */}
-            <View style={styles.settingsButton}>
-              <Button title="⚙️設定" onPress={() => setSettingsVisible(true)} />
+        <View style={styles.container}>
+          {/* 設定ボタン */}
+          <View style={styles.settingsButton}>
+            <TouchableOpacity onPress={() => setSettingsVisible(true)}>
+              <Image source={require('./assets/setting-button.png')} style={{ width: 80, height: 80 }} />
+            </TouchableOpacity>
+          </View>
+          {/* 執筆ボタン */}
+          <View style={styles.writeButton}>
+            <TouchableOpacity onPress={() => {
+              setWritingVisible(true);
+              Animated.timing(slideAnim, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true,
+              }).start();
+            }}>
+              <Image source={require('./assets/write-button.png')} style={{ width: 80, height: 80 }} />
+            </TouchableOpacity>
+          </View>
+
+          {/* 設定モーダル */}
+          <Modal visible={settingsVisible} animationType="slide" transparent={true}>
+            <View style={styles.settingBackground}>
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.modalOverlayTouchable} />
+              </TouchableWithoutFeedback>
+
+              <View style={styles.settingContent}>
+                <Text style={styles.settingTitle}>設定</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="ユーザーID"
+                  value={tempUserId}
+                  onChangeText={setTempUserId}
+                />
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="サーバーIPアドレス"
+                  value={tempIP}
+                  onChangeText={setTempIP}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Pressable style={styles.modalButton} onPress={saveSettings}>
+                    <Text style={{ color: '#fff' }}>保存</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.modalButton, { backgroundColor: '#999' }]}
+                    onPress={cancelSettings}
+                  >
+                    <Text style={{ color: '#fff' }}>キャンセル</Text>
+                  </Pressable>
+                </View>
+              </View>
             </View>
-
-            {/* 入力欄と送信ボタン */}
-            <TextInput
-              style={styles.input}
-              multiline
-              placeholder="ここにメッセージを入力"
-              value={message}
-              onChangeText={setMessage}
-            />
-            <Button title="瓶に入れて送る" onPress={sendMessage} />
-            <Text style={{ marginTop: 10, color: '#444', textAlign: 'center' }}>{statusMessage}</Text>
-
-            {/* モーダル */}
-            <Modal visible={settingsVisible} animationType="slide" transparent={true}>
-              <View style={styles.modalBackground}>
-                <View style={styles.modalContent}>
-                  <Text style={styles.modalTitle}>⚙️ 設定</Text>
+          </Modal>
+          {/* 執筆モーダル */}
+          <Modal visible={writingVisible} animationType="slide" transparent={true}>
+            <View style={styles.modalOverlay}>
+              {/* モーダル背景部分だけ Touchable にする */}
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.modalOverlayTouchable} />
+              </TouchableWithoutFeedback>
+            
+              {/* 手紙コンテンツは dismiss 対象にしない */}
+              <Animated.View style={[styles.letterNoteContainer, { transform: [{ translateY: slideAnim }] }]}>
+                <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
                   <TextInput
-                    style={styles.modalInput}
-                    placeholder="ユーザーID"
-                    value={tempSender}
-                    onChangeText={setTempSender}
+                    style={styles.letterInput}
+                    multiline
+                    placeholder="ここにメッセージを入力"
+                    value={message}
+                    onChangeText={setMessage}
                   />
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="サーバーIPアドレス"
-                    value={tempIP}
-                    onChangeText={setTempIP}
-                  />
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Pressable style={styles.modalButton} onPress={saveSettings}>
-                      <Text style={{ color: '#fff' }}>保存</Text>
+                  <View style={styles.letterButtons}>
+                    <Pressable onPress={sendMessage} style={styles.letterSend}>
+                      <Text style={{ color: '#fff' }}>送信する</Text>
                     </Pressable>
-                    <Pressable
-                      style={[styles.modalButton, { backgroundColor: '#999' }]}
-                      onPress={() => setSettingsVisible(false)}
-                    >
+                    <Pressable onPress={() => {
+                      Animated.timing(slideAnim, {
+                        toValue: 800,
+                        duration: 300,
+                        useNativeDriver: true,
+                      }).start(() => setWritingVisible(false));
+                    }} style={[styles.letterSend, { backgroundColor: '#888' }]}>
                       <Text style={{ color: '#fff' }}>キャンセル</Text>
                     </Pressable>
                   </View>
-                </View>
-              </View>
-            </Modal>
-          </View>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
+                </ImageBackground>
+              </Animated.View>
+            </View>
+          </Modal>
+        </View>
+      </ImageBackground>
     </SafeAreaView>
   );
 }
@@ -130,36 +187,35 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#fff',
+    // backgroundColor: '#fff',
     justifyContent: 'center',
+  },
+  modalOverlayTouchable: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
   settingsButton: {
     position: 'absolute',
-    top: 10,
-    right: 10,
+    top: 0,
+    right: 0,
     zIndex: 10,
   },
-  input: {
-    height: 150,
-    borderColor: '#ccc',
-    borderWidth: 1,
-    marginBottom: 12,
-    padding: 10,
-    textAlignVertical: 'top',
-  },
-  modalBackground: {
+  settingBackground: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContent: {
+  settingContent: {
     width: '85%',
     backgroundColor: 'white',
     padding: 20,
     borderRadius: 10,
   },
-  modalTitle: {
+  settingTitle: {
     fontSize: 20,
     marginBottom: 12,
     textAlign: 'center',
@@ -177,6 +233,55 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: 'center',
     flex: 1,
+    marginHorizontal: 5,
+  },
+  writeButton: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    zIndex: 10,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  letterNoteContainer: {
+    width: '80%',
+    height: 480,
+  },
+
+  letterNote: {
+    flex: 1,
+    resizeMode: 'stretch',
+    paddingHorizontal: 28,
+    paddingTop: 40,    // ← 書き出し位置に合わせて調整
+    paddingBottom: 25,
+    justifyContent: 'space-between',
+  },
+
+  letterInput: {
+    flex: 1,
+    textAlignVertical: 'top',
+    fontSize: 16,
+    lineHeight: 33.5,
+  },
+
+  letterButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+
+  letterSend: {
+    backgroundColor: '#007AFF',
+    padding: 10,
+    borderRadius: 8,
+    flex: 1,
+    alignItems: 'center',
     marginHorizontal: 5,
   },
 });
