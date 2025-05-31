@@ -20,13 +20,13 @@ import {
   TouchableOpacity,
   Dimensions
 } from 'react-native';
-import bgImage from './assets/background.png';
+import bgImage from './assets/bg1.png';
 
 export default function App() {
   const [message, setMessage] = useState('');
 
   const [userId, setUserId] = useState('user_abc');
-  const [serverIP, setServerIP] = useState('http://172.20.10.2:8000'); // デフォルト値
+  const [serverIP, setServerIP] = useState('https://5ec5-157-82-128-2.ngrok-free.app'); // デフォルト値
   const [tempUserId, setTempUserId] = useState(userId);
   const [tempIP, setTempIP] = useState(serverIP);
   const [settingsVisible, setSettingsVisible] = useState(false);
