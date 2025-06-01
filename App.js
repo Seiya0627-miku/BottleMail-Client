@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, 
-  TouchableWithoutFeedback, Keyboard, Modal, Text, Pressable, Image, ImageBackground,
+  TouchableWithoutFeedback, Keyboard, Modal, Text, Pressable, Image, ImageBackground, FlatList,
   Animated, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import initialMessagesData from './data/messages.json';
 
@@ -26,6 +26,24 @@ export default function App() {
   const displayMessages = useMemo(() => {
     return [...messages].reverse();
   }, [messages]);
+
+  const itemsPerPage = 9; // 1ページあたりのアイテム数
+  // ページ分割されたメッセージの配列 (例: [ [msg1-9], [msg10-18], ... ])
+  const paginatedMessages = useMemo(() => {
+    if (!displayMessages || displayMessages.length === 0) {
+      return []; // メッセージがない場合は空の配列
+    }
+    const pages = [];
+    for (let i = 0; i < displayMessages.length; i += itemsPerPage) {
+      pages.push(displayMessages.slice(i, i + itemsPerPage));
+    }
+    return pages;
+  }, [displayMessages]);
+  const totalPages = paginatedMessages.length;
+
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [shelfContainerWidth, setShelfContainerWidth] = useState(0); // 棚コンテナの実際の幅
+
 
   const sendMessage = async () => {
     if (!message.trim()) {
@@ -88,6 +106,14 @@ export default function App() {
       setReadingMessage(null);
     });
   };
+
+  const onViewRef = React.useRef(({ viewableItems }) => {
+  if (viewableItems && viewableItems.length > 0) {
+    // viewableItems[0].index が null や undefined になるケースを考慮
+    setCurrentPageIndex(viewableItems[0].index ?? 0);
+  }
+  });
+  const viewConfigRef = React.useRef({ viewAreaCoveragePercentThreshold: 50 });
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -211,38 +237,73 @@ export default function App() {
           <Modal visible={boxVisible} animationType="slide" transparent={true}>
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <ImageBackground
-                source={require('./assets/shelf.png')} // shelfImageのパスを直接指定
+                source={require('./assets/shelf.png')}
                 style={styles.shelfBackground}
                 resizeMode="contain"
+                onLayout={(event) => { // ImageBackgroundの実際の幅を取得してステートに保存
+                  const { width } = event.nativeEvent.layout;
+                  setShelfContainerWidth(width);
+                }}
               >
-                <View style={styles.shelfGrid}>
-                  {/* ★ displayMessages を使ってマップ処理 */}
-                  {displayMessages.slice(0, 9).map((msg) => ( // 最初の9件だけ表示 (3x3グリッドのため)
-                    <TouchableOpacity
-                      key={msg.id}
-                      style={styles.bottleItemOnShelf}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setReadingMessage(msg);
-                        setBoxVisible(false); // 棚を閉じる
-                        fadeAnim.setValue(0);
-                        fadeIn();
-                      }}
-                    >
-                      <Image
-                        source={require('./assets/bottle.png')} // bottleImageのパスを直接指定
-                        style={styles.bottleImageOnShelf}
-                      />
-                      <Text numberOfLines={1} style={styles.bottleLabel}>
-                        {msg.title}
+                {/* shelfContainerWidthが取得され、表示するメッセージがある場合のみFlatListを表示 */}
+                {shelfContainerWidth > 0 && paginatedMessages.length > 0 && (
+                  <FlatList
+                    data={paginatedMessages}
+                    renderItem={({ item: pageMessages, index }) => (
+                      // 各ページコンテナ。幅を親のImageBackgroundに合わせる
+                      <View style={[styles.shelfPage, { width: shelfContainerWidth }]}>
+                        <View style={styles.shelfGrid}> {/* 3x3グリッドのスタイルは前回定義したもの */}
+                          {pageMessages.map((msg) => (
+                            <TouchableOpacity
+                              key={msg.id}
+                              style={styles.bottleItemOnShelf}
+                              activeOpacity={0.7}
+                              onPress={() => {
+                                setReadingMessage(msg);
+                                setBoxVisible(false);
+                                fadeAnim.setValue(0); // フェードインのために透明度をリセット
+                                fadeIn(); // 手紙を読むときにフェードイン
+                              }}
+                            >
+                              <Image source={require('./assets/bottle.png')} style={styles.bottleImageOnShelf} />
+                              <Text numberOfLines={1} style={styles.bottleLabel}>{msg.title}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                    keyExtractor={(item, index) => `page-${index}`}
+                    horizontal // 横スクロールにする
+                    pagingEnabled // スワイプでページ単位にスクロールする
+                    showsHorizontalScrollIndicator={false} // 横スクロールバーを非表示
+                    onViewableItemsChanged={onViewRef.current} // 表示されてるアイテムが変わった時の処理
+                    viewabilityConfig={viewConfigRef.current} // 表示されてるアイテムを判定する設定
+                    // getItemLayout を使うとパフォーマンスが向上する場合があります（ページ幅が全て同じなので有効）
+                    getItemLayout={(data, index) => (
+                      { length: shelfContainerWidth, offset: shelfContainerWidth * index, index }
+                    )}
+                  />
+                )}
+
+                {/* メッセージが1件もない場合の表示 (任意) */}
+                {shelfContainerWidth > 0 && paginatedMessages.length === 0 && (
+                  <View style={[styles.shelfPage, { width: shelfContainerWidth, justifyContent: 'center', alignItems: 'center' }]}>
+                      <Text style={styles.emptyShelfText}>手紙はまだありません</Text>
+                  </View>
+                )}
+
+                {/* ページ番号表示 (FlatListの兄弟要素として配置) */}
+                {totalPages > 0 && ( // メッセージがある場合のみページ番号を表示
+                    <View style={styles.pageIndicatorContainer}>
+                      <Text style={styles.pageIndicatorText}>
+                        {currentPageIndex + 1} / {totalPages}
                       </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                    </View>
+                )}
 
                 <TouchableOpacity
                   onPress={() => setBoxVisible(false)}
-                  style={[styles.button, { backgroundColor: '#888', position: 'absolute', bottom:-20 }]}
+                  style={[styles.button, { backgroundColor: '#888', position: 'absolute', bottom:-70 }]}
                 >
                   <Text style={styles.buttonText}>閉じる</Text>
                 </TouchableOpacity>
@@ -427,5 +488,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: 'bold',
     width: '100%',
+  },
+
+  // 手紙の棚ページのスタイル
+  shelfPage: {
+    // width は FlatList の renderItem 内で動的に設定されます (例: { width: shelfContainerWidth })
+    height: '100%',           // 親のImageBackgroundの高さに合わせる
+    justifyContent: 'flex-start', // ★★★ グリッドをページの上端から配置する
+    alignItems: 'center',         // ★★★ グリッド自体をページ内で水平中央に配置
+    paddingTop: 30,               // ★ 棚の画像の上端から最初の瓶までの余白 (お好みで調整)
+    paddingBottom: 20,            // ★ 棚の画像の下端と最後の瓶またはページインジケータとの余白 (お好みで調整)
+    // backgroundColor: 'rgba(0,0,255,0.1)', // デバッグ用に一時的に背景色をつけると分かりやすい
+  },
+  pageIndicatorContainer: {
+    position: 'absolute', // 棚画像の上に重ねて表示
+    bottom: 5, // 閉じるボタンとの兼ね合いで調整 (棚の下部からの位置)
+    // left: 0, right: 0, // 横方向中央にしたい場合
+    alignSelf: 'center', // これで横方向中央に
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+  },
+  pageIndicatorText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  emptyShelfText: { // メッセージがない場合のテキストスタイル
+    color: '#fff', // 棚の背景に合わせて調整
+    fontSize: 16,
+    // fontWeight: 'bold',
   },
 });
