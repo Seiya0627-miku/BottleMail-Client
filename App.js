@@ -4,18 +4,47 @@ import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView,
   Animated, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import initialMessagesData from './data/messages.json';
 
-export default function App() {
-  const [message, setMessage] = useState('');
+const windowWidth = Dimensions.get('window').width;
 
+// --- 便箋のサイズ制約 ---
+const MAX_STATIONERY_WIDTH = 300;
+const MAX_STATIONERY_HEIGHT = 400;
+const TARGET_ASPECT_RATIO_H_W = 4 / 3; // 高さ / 幅 (400 / 300)
+const MAX_SCREEN_WIDTH_PERCENTAGE = 0.8; // 画面幅の最大80%
+
+// --- 便箋の実際のサイズを計算 ---
+let actualStationeryWidth = windowWidth * MAX_SCREEN_WIDTH_PERCENTAGE;
+
+// 1. 最大幅の制約を適用
+if (actualStationeryWidth > MAX_STATIONERY_WIDTH) {
+  actualStationeryWidth = MAX_STATIONERY_WIDTH;
+}
+
+// 2. この幅に基づいて、目標アスペクト比から高さを計算
+let actualStationeryHeight = actualStationeryWidth * TARGET_ASPECT_RATIO_H_W;
+
+// 3. 計算された高さが最大高さを超えていないか確認
+if (actualStationeryHeight > MAX_STATIONERY_HEIGHT) {
+  actualStationeryHeight = MAX_STATIONERY_HEIGHT;
+  // 高さが制限されたので、アスペクト比を保つために幅を再計算
+  actualStationeryWidth = actualStationeryHeight / TARGET_ASPECT_RATIO_H_W;
+}
+// --- ここまでが便箋サイズの計算 ---
+
+export default function App() {
+  // 設定
   const [userId, setUserId] = useState('user_abc');
   const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempUserId, setTempUserId] = useState(userId);
   const [tempIP, setTempIP] = useState(serverIP);
   const [settingsVisible, setSettingsVisible] = useState(false);
 
+  // 執筆モード
   const [writingVisible, setWritingVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(800)).current; // 初期位置は画面外下部
   const fadeAnim = useRef(new Animated.Value(0)).current; // 透明度の初期値は0 (完全に透明)
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
 
   const [statusMessage, setStatusMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -107,6 +136,8 @@ export default function App() {
 
     setIsSending(true);
 
+    const messageTitleToSend = title.trim() === '' ? '無題のメッセージ' : title.trim();
+
     const currentServerIP = tempIP || serverIP;  // 念のため fallback もつける
     const url = `${currentServerIP}/send`;
 
@@ -121,7 +152,7 @@ export default function App() {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, message }),
+        body: JSON.stringify({ userId, title: messageTitleToSend, message }),
         signal: controller.signal, // AbortControllerのsignalを渡す
       });
 
@@ -131,6 +162,7 @@ export default function App() {
       if (data.status === 'received') {
         setStatusMessage('✅ 送信成功！');
         setMessage('');
+        setTitle('');
         Animated.timing(slideAnim, {
           toValue: 800,
           duration: 300,
@@ -261,7 +293,7 @@ export default function App() {
                       <Text style={styles.buttonText}>保存</Text>
                     </Pressable>
                     <Pressable
-                      style={[styles.buttonInRow, { backgroundColor: '#999' }]}
+                      style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}
                       onPress={cancelSettings}
                     >
                       <Text style={styles.buttonText}>キャンセル</Text>
@@ -288,35 +320,54 @@ export default function App() {
                       alignItems: 'center'
                     }}
                     keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
                   >
-                    <Animated.View style={[styles.letterNoteContainer, { transform: [{ translateY: slideAnim }] }]}>
-                      <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
-                        <TextInput
-                          style={styles.letterInput}
-                          multiline
-                          placeholder="ここにメッセージを入力"
-                          value={message}
-                          onChangeText={setMessage}
-                        />
-                        <View style={styles.buttonRowContainer}>
-                          <Pressable
-                            onPress={sendMessage}
-                            style={isSending ? [styles.buttonInRow, { backgroundColor: '#175C94' }] : styles.buttonInRow}
-                            disabled={isSending} // 送信中はボタンを無効化
-                          >
-                            <Text style={styles.buttonText}>{isSending ? '送信中…' : '送信する'}</Text>
-                          </Pressable>
-                          <Pressable onPress={() => {
-                            Animated.timing(slideAnim, {
-                              toValue: 800,
-                              duration: 300,
-                              useNativeDriver: true,
-                            }).start(() => setWritingVisible(false));
-                          }} style={[styles.buttonInRow, { backgroundColor: '#888' }]}>
-                            <Text style={styles.buttonText}>キャンセル</Text>
-                          </Pressable>
-                        </View>
-                      </ImageBackground>
+                    <Animated.View style={{ width: actualStationeryWidth, alignItems: 'center', transform: [{ translateY: slideAnim }] }}>
+                      <View style={{width: '100%', height: actualStationeryHeight}}>
+                        <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
+                          {/* 入力エリア */}
+                          <View style={{ flex: 1 }}>
+                            {/* タイトル入力欄 */}
+                            <TextInput
+                              style={styles.titleInput}
+                              placeholder="タイトルを入力 (任意)" // 未入力でも送信可能なので「任意」と示す
+                              value={title}
+                              onChangeText={setTitle}
+                              returnKeyType="next" // 次の入力欄へフォーカスを移すため（本文入力欄で対応が必要な場合あり）
+                              maxLength={50} // 例えば最大50文字など
+                            />
+
+                            {/* 本文入力欄 */}
+                            <TextInput
+                              style={styles.letterInput} // このスタイルに flex: 1 を持たせる
+                              multiline
+                              placeholder="ここにメッセージを入力"
+                              value={message}
+                              onChangeText={setMessage}
+                            />
+                          </View>
+                        </ImageBackground>
+                      </View>
+
+                      {/* ボタンエリア */}
+                      <View style={styles.buttonRowContainer}>
+                        <Pressable
+                          onPress={sendMessage}
+                          style={isSending ? [styles.buttonInRow, { backgroundColor: '#175C94' }] : styles.buttonInRow}
+                          disabled={isSending} // 送信中はボタンを無効化
+                        >
+                          <Text style={styles.buttonText}>{isSending ? '送信中…' : '送信する'}</Text>
+                        </Pressable>
+                        <Pressable onPress={() => {
+                          Animated.timing(slideAnim, {
+                            toValue: 800,
+                            duration: 300,
+                            useNativeDriver: true,
+                          }).start(() => setWritingVisible(false));
+                        }} style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}>
+                          <Text style={styles.buttonText}>キャンセル</Text>
+                        </Pressable>
+                      </View>
                     </Animated.View>
                   </ScrollView>
                 </View>
@@ -394,7 +445,7 @@ export default function App() {
 
                 <TouchableOpacity
                   onPress={() => setBoxVisible(false)}
-                  style={[styles.button, { backgroundColor: '#888', position: 'absolute', bottom:-70 }]}
+                  style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom:-70 }]}
                 >
                   <Text style={styles.buttonText}>閉じる</Text>
                 </TouchableOpacity>
@@ -423,14 +474,14 @@ export default function App() {
                   style={styles.letterNote}
                   resizeMode="stretch"
                 >
-                  <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8 }}>
+                  <Text style={styles.titleInput}>
                     {readingMessage?.title}
                   </Text>
                   <Text style={styles.letterInput}>
                     {readingMessage?.content}
                   </Text>
                   <Pressable
-                    style={[styles.button, { backgroundColor: '#888', position: 'absolute', bottom: 10 }]}
+                    style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom: 10 }]}
                     onPress={() => {
                       fadeOut();
                       setBoxVisible(true); // ボックスを再表示
@@ -518,27 +569,30 @@ const styles = StyleSheet.create({
   },
 
   // 執筆モードのスタイル
-  letterNoteContainer: {
-    width: Dimensions.get('window').width * 0.8,
-    height: 480,
+  letterNote: { // ★ImageBackground (便箋画像) のスタイル
+    flex: 1, // letterNoteContainer いっぱいに広がる
+    // 便箋画像の端から実際の書き込み開始位置までの「余白」
+    // これらの値は、お持ちの letter.png のデザインに合わせて調整してください。
+    // 例えば、画像の上端から10%の位置から書き始める、など。
+    // 固定値(dp)で指定するか、actualStationeryHeight/Widthに基づいて計算します。
+    paddingTop: actualStationeryHeight * 0.1,    // 例: 便箋の高さの10%
+    paddingHorizontal: actualStationeryWidth * 0.08, // 例: 便箋の幅の8%
+    paddingBottom: actualStationeryHeight * 0.08, // 例: 便箋の高さの8%
   },
-
-  letterNote: {
-    flex: 1,
-    resizeMode: 'stretch',
-    paddingHorizontal: 28,
-    paddingTop: 40,    // ← 書き出し位置に合わせて調整
-    paddingBottom: 25,
-    justifyContent: 'space-between',
+  titleInput: { // タイトル入力欄のスタイル
+    borderColor: '#ccc',
+    paddingHorizontal: 8,
+    paddingVertical: 0,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 0,    // タイトル入力欄と本文入力欄の間
   },
-
   letterInput: {
-    flex: 1,
+    paddingHorizontal: 8,
     textAlignVertical: 'top',
     fontSize: 16,
-    lineHeight: 33.5,
+    lineHeight: 28,
   },
-
   // 手紙ボックスのスタイル
   shelfBackground: {
     width: '100%',
