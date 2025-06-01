@@ -1,26 +1,8 @@
-import React, { useState, useRef } from 'react';
-import {
-  View,
-  TextInput,
-  Button,
-  Alert,
-  StyleSheet,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
-  Modal,
-  Text,
-  Pressable,
-  Image,
-  ImageBackground,
-  Animated,
-  ScrollView,
-  TouchableOpacity,
-  Dimensions
-} from 'react-native';
-import bgImage from './assets/bg1.png';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, 
+  TouchableWithoutFeedback, Keyboard, Modal, Text, Pressable, Image, ImageBackground,
+  Animated, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import initialMessagesData from './data/messages.json';
 
 export default function App() {
   const [message, setMessage] = useState('');
@@ -40,12 +22,10 @@ export default function App() {
   // 手紙ボックス
   const [boxVisible, setBoxVisible] = useState(false);
   const [readingMessage, setReadingMessage] = useState(null); // 現在読んでいる手紙
-  const demoMessages = [
-    { id: '1', title: 'こんにちは', content: 'やあ！元気？', date: '2025-05-23' },
-    { id: '2', title: '秘密の話', content: 'ここだけの話なんだけど…\n一行の内容が長い時はこんな感じで改行されるよ。', date: '2025-05-22' },
-    { id: '3', title: 'お知らせ', content: '明日は雨だよ☔', date: '2025-05-21' },
-    { id: '4', title: 'お知らせ', content: '明日は雨だよ☔', date: '2025-05-21' },
-  ];
+  const [messages, setMessages] = useState(initialMessagesData);
+  const displayMessages = useMemo(() => {
+    return [...messages].reverse();
+  }, [messages]);
 
   const sendMessage = async () => {
     if (!message.trim()) {
@@ -112,7 +92,7 @@ export default function App() {
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ImageBackground
-        source={bgImage}
+        source={require('./assets/bg1.png')}
         style={styles.container}
         resizeMode="cover" // 画面比率を満たすように拡大。必要に応じて contain/stretch に
       >
@@ -231,26 +211,27 @@ export default function App() {
           <Modal visible={boxVisible} animationType="slide" transparent={true}>
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <ImageBackground
-                source={require('./assets/shelf.png')}
+                source={require('./assets/shelf.png')} // shelfImageのパスを直接指定
                 style={styles.shelfBackground}
                 resizeMode="contain"
               >
                 <View style={styles.shelfGrid}>
-                  {demoMessages.map((msg) => (
+                  {/* ★ displayMessages を使ってマップ処理 */}
+                  {displayMessages.slice(0, 9).map((msg) => ( // 最初の9件だけ表示 (3x3グリッドのため)
                     <TouchableOpacity
                       key={msg.id}
-                      style={{width: 80, alignItems: 'center'}}
+                      style={styles.bottleItemOnShelf}
                       activeOpacity={0.7}
                       onPress={() => {
+                        setReadingMessage(msg);
+                        setBoxVisible(false); // 棚を閉じる
                         fadeAnim.setValue(0);
                         fadeIn();
-                        setReadingMessage(msg);
-                        setBoxVisible(false);
                       }}
                     >
                       <Image
-                        source={require('./assets/bottle.png')}
-                        style={{width: 80, height: 100, resizeMode: 'contain'}}
+                        source={require('./assets/bottle.png')} // bottleImageのパスを直接指定
+                        style={styles.bottleImageOnShelf}
                       />
                       <Text numberOfLines={1} style={styles.bottleLabel}>
                         {msg.title}
@@ -261,7 +242,7 @@ export default function App() {
 
                 <TouchableOpacity
                   onPress={() => setBoxVisible(false)}
-                  style={[styles.button, {position: 'absolute', bottom: -20, backgroundColor: '#999'}]}
+                  style={[styles.button, { backgroundColor: '#888', position: 'absolute', bottom:-20 }]}
                 >
                   <Text style={styles.buttonText}>閉じる</Text>
                 </TouchableOpacity>
@@ -299,7 +280,7 @@ export default function App() {
                     </Text>
                   </ScrollView>
                   <Pressable
-                    style={[styles.button, {position: 'absolute', bottom:20}]}
+                    style={[styles.button, { backgroundColor: '#888', position: 'absolute', bottom: 10 }]}
                     onPress={() => {
                       fadeOut();
                       setBoxVisible(true); // ボックスを再表示
@@ -419,16 +400,32 @@ const styles = StyleSheet.create({
   shelfGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-around',
-    rowGap: 10,
-    columnGap: 20,
-    paddingHorizontal: 10,
+    justifyContent: 'flex-start', // ★ 左詰めにする (または 'space-between' や 'center' でアイテムを中央寄せ)
+    // alignItems: 'center', // 各行のアイテムを中央揃え（高さが異なる場合など）
+    width: '85%', // ★ shelfBackground の幅に対して、グリッドが占める幅 (例: 85%)
+                    // この幅の中に3つの瓶がきれいに収まるように調整します
+    // paddingVertical: 10, // グリッド全体の上下の余白
+    // backgroundColor: 'rgba(255,0,0,0.2)', // デバッグ用に背景色をつけて確認すると良い
+  },
+  bottleItemOnShelf: { // 瓶のTouchableOpacity用のスタイル
+    // (shelfGridの幅) / 3 から、左右のマージンを引いた値が目安
+    width: '30%',     // ★ shelfGridの幅に対して30% (3つ並べるので約33.3%からマージン分を引く)
+    aspectRatio: 0.833, // 瓶の縦横比 (例: 幅70, 高さ100なら 70/100 = 0.7)
+    alignItems: 'center',
+    justifyContent: 'center', // 瓶画像とラベルをコンテナ内で中央に
+    marginHorizontal: '1.5%', // 瓶同士の左右の間隔 (30% * 3 + 1.5% * 6 = 99%)
+  },
+  bottleImageOnShelf: { // 瓶のImageコンポーネント用のスタイル
+    width: '75%',  // bottleItemOnShelfの幅に対して80%
+    height: '75%', // bottleItemOnShelfの高さに対して70% (aspectRatioで調整)
+    resizeMode: 'contain',
   },
   bottleLabel: {
     marginTop: 6,
     fontSize: 14,
     color: '#fff',
     textAlign: 'center',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    width: '100%',
   },
 });
