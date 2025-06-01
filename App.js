@@ -252,7 +252,7 @@ export default function App() {
                     renderItem={({ item: pageMessages, index }) => (
                       // 各ページコンテナ。幅を親のImageBackgroundに合わせる
                       <View style={[styles.shelfPage, { width: shelfContainerWidth }]}>
-                        <View style={styles.shelfGrid}> {/* 3x3グリッドのスタイルは前回定義したもの */}
+                        <View style={styles.shelfGrid}>
                           {pageMessages.map((msg) => (
                             <TouchableOpacity
                               key={msg.id}
