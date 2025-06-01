@@ -8,7 +8,7 @@ export default function App() {
   const [message, setMessage] = useState('');
 
   const [userId, setUserId] = useState('user_abc');
-  const [serverIP, setServerIP] = useState('https://5ec5-157-82-128-2.ngrok-free.app'); // デフォルト値
+  const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempUserId, setTempUserId] = useState(userId);
   const [tempIP, setTempIP] = useState(serverIP);
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -18,6 +18,9 @@ export default function App() {
   const fadeAnim = useRef(new Animated.Value(0)).current; // 透明度の初期値は0 (完全に透明)
 
   const [statusMessage, setStatusMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const systemMessageAnimY = useRef(new Animated.Value(-150)).current; // 初期位置は画面外上部 (-150など十分な値)
+  const systemMessageOpacity = useRef(new Animated.Value(0)).current;  // 初期透明度は0
 
   // 手紙ボックス
   const [boxVisible, setBoxVisible] = useState(false);
@@ -40,42 +43,114 @@ export default function App() {
     return pages;
   }, [displayMessages]);
   const totalPages = paginatedMessages.length;
-
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [shelfContainerWidth, setShelfContainerWidth] = useState(0); // 棚コンテナの実際の幅
 
+  useEffect(() => {
+    let hideTimerId = null;
+
+    if (statusMessage) { // このifブロックは「送信成功！」の時だけ実行される想定
+      // (1) 表示アニメーションを開始
+      Animated.parallel([
+        Animated.timing(systemMessageAnimY, {
+          toValue: Platform.OS === 'ios' ? 50 : 20,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(systemMessageOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        })
+      ]).start(() => {
+        // (2) 表示アニメーションが完了した後、自動で隠すタイマーをセット
+        hideTimerId = setTimeout(() => {
+          // (3) 非表示アニメーションを開始
+          Animated.parallel([
+            Animated.timing(systemMessageAnimY, {
+              toValue: -150,
+              duration: 300,
+              useNativeDriver: true,
+            }),
+            Animated.timing(systemMessageOpacity, {
+              toValue: 0,
+              duration: 300,
+              useNativeDriver: true,
+            })
+          ]).start(() => {
+            // (4) 非表示アニメーション完了後に statusMessage を空にする
+            setStatusMessage('');
+          });
+        }, 2500); // 表示アニメーション完了後から2.5秒後に隠す
+      });
+    } else {
+      // statusMessageが空になったら、アニメーション値を即座に初期の「隠れた」状態に戻す
+      systemMessageAnimY.setValue(-150);
+      systemMessageOpacity.setValue(0);
+    }
+
+    // useEffectのクリーンアップ関数
+    return () => {
+      if (hideTimerId) {
+        clearTimeout(hideTimerId);
+      }
+    };
+  }, [statusMessage, systemMessageAnimY, systemMessageOpacity]);
 
   const sendMessage = async () => {
-    if (!message.trim()) {
-      Alert.alert('エラー', 'メッセージを入力してください');
+    if (isSending || !message.trim()) {
+      if (!message.trim()) {
+        Alert.alert('エラー', 'メッセージを入力してください');
+      }
       return;
     }
 
-    setStatusMessage('📤 送信中…');
+    setIsSending(true);
 
     const currentServerIP = tempIP || serverIP;  // 念のため fallback もつける
     const url = `${currentServerIP}/send`;
+
+    // タイムアウト処理の準備
+    const controller = new AbortController();
+    const timeoutDuration = 10000; // 10秒
+    const timeoutId = setTimeout(() => {
+      controller.abort(); // 10秒経過したらリクエストを中断
+    }, timeoutDuration);
 
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, message }),
+        signal: controller.signal, // AbortControllerのsignalを渡す
       });
+
+      clearTimeout(timeoutId); // レスポンスが返ってきたらタイマーをクリア
 
       const data = await res.json();
       if (data.status === 'received') {
         setStatusMessage('✅ 送信成功！');
         setMessage('');
+        Animated.timing(slideAnim, {
+          toValue: 800,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => setWritingVisible(false));
       } else {
-        setStatusMessage('⚠️ 送信失敗');
+        Alert.alert('送信エラー', `メッセージの送信に失敗しました。(詳細: ${data.message || 'サーバーエラー'})`);
       }
     } catch (e) {
-      console.error(e);
-      setStatusMessage('🚫 ネットワークエラー');
+    clearTimeout(timeoutId);
+      if (e.name === 'AbortError') { // 中断エラー（タイムアウト）かどうかを判定
+        console.log('Fetch aborted due to timeout');
+        Alert.alert('タイムアウト', 'しばらくしてから再度お試しください。');
+      } else {
+        console.error(e);
+        Alert.alert('ネットワークエラー', 'ネットワークに接続できませんでした。接続を確認して再度お試しください。');
+      }
+    } finally {
+      setIsSending(false);
     }
-
-    setTimeout(() => setStatusMessage(''), 1000);
   };
 
   const saveSettings = () => {
@@ -107,6 +182,7 @@ export default function App() {
     });
   };
 
+  // FlatListのonViewableItemsChangedを使って、現在表示されているページのインデックスを更新
   const onViewRef = React.useRef(({ viewableItems }) => {
   if (viewableItems && viewableItems.length > 0) {
     // viewableItems[0].index が null や undefined になるケースを考慮
@@ -117,6 +193,18 @@ export default function App() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
+      {statusMessage ? ( // 「送信成功！」の時だけこれがtrueになる
+        <Animated.View style={[
+          styles.systemMessageContainer,
+          {
+            transform: [{ translateY: systemMessageAnimY }],
+            opacity: systemMessageOpacity,
+          }
+        ]}>
+          <Text style={styles.systemMessageText}>{statusMessage}</Text>
+        </Animated.View>
+      ) : null}
+
       <ImageBackground
         source={require('./assets/bg1.png')}
         style={styles.container}
@@ -201,32 +289,35 @@ export default function App() {
                     }}
                     keyboardShouldPersistTaps="handled"
                   >
-                  {/* 手紙コンテンツは dismiss 対象にしない */}
-                  <Animated.View style={[styles.letterNoteContainer, { transform: [{ translateY: slideAnim }] }]}>
-                    <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
-                      <TextInput
-                        style={styles.letterInput}
-                        multiline
-                        placeholder="ここにメッセージを入力"
-                        value={message}
-                        onChangeText={setMessage}
-                      />
-                      <View style={styles.buttonRowContainer}>
-                        <Pressable onPress={sendMessage} style={styles.buttonInRow}>
-                          <Text style={styles.buttonText}>送信する</Text>
-                        </Pressable>
-                        <Pressable onPress={() => {
-                          Animated.timing(slideAnim, {
-                            toValue: 800,
-                            duration: 300,
-                            useNativeDriver: true,
-                          }).start(() => setWritingVisible(false));
-                        }} style={[styles.buttonInRow, { backgroundColor: '#888' }]}>
-                          <Text style={styles.buttonText}>キャンセル</Text>
-                        </Pressable>
-                      </View>
-                    </ImageBackground>
-                  </Animated.View>
+                    <Animated.View style={[styles.letterNoteContainer, { transform: [{ translateY: slideAnim }] }]}>
+                      <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
+                        <TextInput
+                          style={styles.letterInput}
+                          multiline
+                          placeholder="ここにメッセージを入力"
+                          value={message}
+                          onChangeText={setMessage}
+                        />
+                        <View style={styles.buttonRowContainer}>
+                          <Pressable
+                            onPress={sendMessage}
+                            style={isSending ? [styles.buttonInRow, { backgroundColor: '#175C94' }] : styles.buttonInRow}
+                            disabled={isSending} // 送信中はボタンを無効化
+                          >
+                            <Text style={styles.buttonText}>{isSending ? '送信中…' : '送信する'}</Text>
+                          </Pressable>
+                          <Pressable onPress={() => {
+                            Animated.timing(slideAnim, {
+                              toValue: 800,
+                              duration: 300,
+                              useNativeDriver: true,
+                            }).start(() => setWritingVisible(false));
+                          }} style={[styles.buttonInRow, { backgroundColor: '#888' }]}>
+                            <Text style={styles.buttonText}>キャンセル</Text>
+                          </Pressable>
+                        </View>
+                      </ImageBackground>
+                    </Animated.View>
                   </ScrollView>
                 </View>
               </TouchableWithoutFeedback>
@@ -332,14 +423,12 @@ export default function App() {
                   style={styles.letterNote}
                   resizeMode="stretch"
                 >
-                  <ScrollView contentContainerStyle={{ padding: 20 }}>
-                    <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8 }}>
-                      {readingMessage?.title}
-                    </Text>
-                    <Text style={{ fontSize: 16, color: '#333' }}>
-                      {readingMessage?.content}
-                    </Text>
-                  </ScrollView>
+                  <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8 }}>
+                    {readingMessage?.title}
+                  </Text>
+                  <Text style={styles.letterInput}>
+                    {readingMessage?.content}
+                  </Text>
                   <Pressable
                     style={[styles.button, { backgroundColor: '#888', position: 'absolute', bottom: 10 }]}
                     onPress={() => {
@@ -519,5 +608,31 @@ const styles = StyleSheet.create({
     color: '#fff', // 棚の背景に合わせて調整
     fontSize: 16,
     // fontWeight: 'bold',
+  },
+
+  // 送信状態のメッセージ表示用スタイル
+  systemMessageContainer: {
+    position: 'absolute',
+    alignSelf: 'center',
+    maxWidth: Dimensions.get('window').width - 40,
+    top: 0, // translateYで初期位置は画面外になるので、top:0 でOK
+    backgroundColor: 'rgba(255, 255, 255, 0.9)', // 白くて半透明
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999, // 最前面に表示
+    elevation: 10, // Androidの影
+    shadowColor: '#000', // iOSの影
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 5,
+  },
+  systemMessageText: {
+    fontSize: 15,
+    color: '#222', // 少し濃いめの文字色
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });
