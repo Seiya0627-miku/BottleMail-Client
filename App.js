@@ -36,6 +36,15 @@ export default function App() {
 
   const [statusMessage, setStatusMessage] = useState('');
 
+  // 手紙ボックス
+  const [boxVisible, setBoxVisible] = useState(false);
+  const [readingMessage, setReadingMessage] = useState(null); // 現在読んでいる手紙
+  const demoMessages = [
+    { id: '1', title: 'こんにちは', content: 'やあ！元気？', date: '2025-05-23' },
+    { id: '2', title: '秘密の話', content: 'ここだけの話なんだけど…', date: '2025-05-22' },
+    { id: '3', title: 'お知らせ', content: '明日は雨だよ☔', date: '2025-05-21' },
+  ];
+
   const sendMessage = async () => {
     if (!message.trim()) {
       Alert.alert('エラー', 'メッセージを入力してください');
@@ -95,7 +104,7 @@ export default function App() {
             </TouchableOpacity>
           </View>
           {/* 執筆ボタン */}
-          <View style={styles.writeButton}>
+          <View style={{ position: 'absolute', bottom: 0, left: 0, zIndex: 10 }}>
             <TouchableOpacity onPress={() => {
               setWritingVisible(true);
               Animated.timing(slideAnim, {
@@ -105,6 +114,13 @@ export default function App() {
               }).start();
             }}>
               <Image source={require('./assets/write-button.png')} style={{ width: 80, height: 80 }} />
+            </TouchableOpacity>
+          </View>
+
+          {/* 手紙ボックス */}
+          <View style={{ position: 'absolute', bottom: 0, right: 0, zIndex: 10 }}>
+            <TouchableOpacity onPress={() => setBoxVisible(true)}>
+              <Image source={require('./assets/box-button.png')} style={{ width: 80, height: 80 }} />
             </TouchableOpacity>
           </View>
 
@@ -141,6 +157,7 @@ export default function App() {
               </View>
             </TouchableWithoutFeedback>
           </Modal>
+
           {/* 執筆モーダル */}
           <Modal visible={writingVisible} animationType="slide" transparent={true}>
             <KeyboardAvoidingView
@@ -188,6 +205,72 @@ export default function App() {
                 </View>
               </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
+          </Modal>
+
+          {/* 手紙ボックスモーダル */}
+          <Modal visible={boxVisible} animationType="slide" transparent={true}>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <ImageBackground
+                source={require('./assets/shelf.png')}
+                style={styles.shelfBackground}
+                resizeMode="contain"
+              >
+                <View style={styles.shelfGrid}>
+                  {demoMessages.map((msg) => (
+                    <TouchableOpacity
+                      key={msg.id}
+                      style={styles.bottleItem}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        console.log("Bottle tapped:", msg.title); // ← デバッグ
+                        setReadingMessage(msg);
+                      }}
+                    >
+                      <Image
+                        source={require('./assets/bottle.png')}
+                        style={styles.bottleImage}
+                      />
+                      <Text numberOfLines={1} style={styles.bottleLabel}>
+                        {msg.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setBoxVisible(false)}
+                  style={styles.closeBoxButton}
+                >
+                  <Text style={{ color: '#fff' }}>閉じる</Text>
+                </TouchableOpacity>
+              </ImageBackground>
+            </View>
+          </Modal>
+
+          {/* 手紙の内容を表示するモーダル */}
+          <Modal visible={!!readingMessage} animationType="fade" transparent={true}>
+            <View style={styles.overlay}>
+              <View style={styles.letterNoteContainer}>
+                <ImageBackground
+                  source={require('./assets/letter.png')}
+                  style={styles.letterNote}
+                  resizeMode="stretch"
+                >
+                  <ScrollView contentContainerStyle={{ padding: 20 }}>
+                    <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8 }}>
+                      {readingMessage?.title}
+                    </Text>
+                    <Text style={{ fontSize: 16, color: '#333' }}>{readingMessage?.content}</Text>
+                  </ScrollView>
+                  <Pressable
+                    style={[styles.letterSend, { backgroundColor: '#888', margin: 20 }]}
+                    onPress={() => setReadingMessage(null)}
+                  >
+                    <Text style={{ color: '#fff' }}>瓶に戻す</Text>
+                  </Pressable>
+                </ImageBackground>
+              </View>
+            </View>
           </Modal>
         </View>
       </ImageBackground>
@@ -288,5 +371,47 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     marginHorizontal: 5,
+  },
+
+  shelfBackground: {
+    width: '100%',
+    height: 400,  // または '80%' などでも可
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  shelfGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    rowGap: 30,
+    columnGap: 20,
+    paddingHorizontal: 10,
+  },
+
+  bottleItem: {
+    width: 80,
+    alignItems: 'center',
+  },
+
+  bottleImage: {
+    width: 80,
+    height: 100,
+    resizeMode: 'contain',
+  },
+
+  bottleLabel: {
+    marginTop: 6,
+    fontSize: 14,
+    color: '#fff',
+    textAlign: 'center',
+  },
+
+  closeBoxButton: {
+    backgroundColor: '#0008',
+    padding: 10,
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginTop: 20,
   },
 });
