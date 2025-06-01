@@ -33,6 +33,7 @@ export default function App() {
 
   const [writingVisible, setWritingVisible] = useState(false);
   const slideAnim = useRef(new Animated.Value(800)).current; // 初期位置は画面外下部
+  const fadeAnim = useRef(new Animated.Value(0)).current; // 透明度の初期値は0 (完全に透明)
 
   const [statusMessage, setStatusMessage] = useState('');
 
@@ -41,8 +42,9 @@ export default function App() {
   const [readingMessage, setReadingMessage] = useState(null); // 現在読んでいる手紙
   const demoMessages = [
     { id: '1', title: 'こんにちは', content: 'やあ！元気？', date: '2025-05-23' },
-    { id: '2', title: '秘密の話', content: 'ここだけの話なんだけど…', date: '2025-05-22' },
+    { id: '2', title: '秘密の話', content: 'ここだけの話なんだけど…\n一行の内容が長い時はこんな感じで改行されるよ。', date: '2025-05-22' },
     { id: '3', title: 'お知らせ', content: '明日は雨だよ☔', date: '2025-05-21' },
+    { id: '4', title: 'お知らせ', content: '明日は雨だよ☔', date: '2025-05-21' },
   ];
 
   const sendMessage = async () => {
@@ -89,6 +91,24 @@ export default function App() {
     setSettingsVisible(false); // ステートは変更しない
   };
 
+  const fadeIn = () => {
+    Animated.timing(fadeAnim, {
+      toValue: 1, // 透明度を1 (不透明) に
+      duration: 300, // 0.3秒でアニメーション
+      useNativeDriver: true, // パフォーマンス向上のため
+    }).start();
+  };
+
+  const fadeOut = () => {
+    Animated.timing(fadeAnim, {
+      toValue: 0, // 透明度を0 (透明) に
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setReadingMessage(null);
+    });
+  };
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ImageBackground
@@ -98,13 +118,13 @@ export default function App() {
       >
         <View style={styles.container}>
           {/* 設定ボタン */}
-          <View style={styles.settingsButton}>
+          <View style={{ position: 'absolute', top: 20, right: 20, zIndex: 10 }}>
             <TouchableOpacity onPress={() => setSettingsVisible(true)}>
               <Image source={require('./assets/setting-button.png')} style={{ width: 80, height: 80 }} />
             </TouchableOpacity>
           </View>
           {/* 執筆ボタン */}
-          <View style={{ position: 'absolute', bottom: 0, left: 0, zIndex: 10 }}>
+          <View style={{ position: 'absolute', bottom: 20, left: 20, zIndex: 10 }}>
             <TouchableOpacity onPress={() => {
               setWritingVisible(true);
               Animated.timing(slideAnim, {
@@ -117,8 +137,8 @@ export default function App() {
             </TouchableOpacity>
           </View>
 
-          {/* 手紙ボックス */}
-          <View style={{ position: 'absolute', bottom: 0, right: 0, zIndex: 10 }}>
+          {/* 手紙ボックスボタン */}
+          <View style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 10 }}>
             <TouchableOpacity onPress={() => setBoxVisible(true)}>
               <Image source={require('./assets/box-button.png')} style={{ width: 80, height: 80 }} />
             </TouchableOpacity>
@@ -128,7 +148,7 @@ export default function App() {
           <Modal visible={settingsVisible} animationType="slide" transparent={true}>
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={styles.overlay}>
-                <View style={styles.settingContent}>
+                <View style={{width: '85%', backgroundColor: 'rgb(118, 182, 255)', padding: 20, borderRadius: 10}}>
                   <Text style={styles.settingTitle}>設定</Text>
                   <TextInput
                     style={styles.modalInput}
@@ -142,15 +162,15 @@ export default function App() {
                     value={tempIP}
                     onChangeText={setTempIP}
                   />
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Pressable style={styles.modalButton} onPress={saveSettings}>
-                      <Text style={{ color: '#fff' }}>保存</Text>
+                  <View style={styles.buttonRowContainer}>
+                    <Pressable style={styles.buttonInRow} onPress={saveSettings}>
+                      <Text style={styles.buttonText}>保存</Text>
                     </Pressable>
                     <Pressable
-                      style={[styles.modalButton, { backgroundColor: '#999' }]}
+                      style={[styles.buttonInRow, { backgroundColor: '#999' }]}
                       onPress={cancelSettings}
                     >
-                      <Text style={{ color: '#fff' }}>キャンセル</Text>
+                      <Text style={styles.buttonText}>キャンセル</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -185,9 +205,9 @@ export default function App() {
                         value={message}
                         onChangeText={setMessage}
                       />
-                      <View style={styles.letterButtons}>
-                        <Pressable onPress={sendMessage} style={styles.letterSend}>
-                          <Text style={{ color: '#fff' }}>送信する</Text>
+                      <View style={styles.buttonRowContainer}>
+                        <Pressable onPress={sendMessage} style={styles.buttonInRow}>
+                          <Text style={styles.buttonText}>送信する</Text>
                         </Pressable>
                         <Pressable onPress={() => {
                           Animated.timing(slideAnim, {
@@ -195,8 +215,8 @@ export default function App() {
                             duration: 300,
                             useNativeDriver: true,
                           }).start(() => setWritingVisible(false));
-                        }} style={[styles.letterSend, { backgroundColor: '#888' }]}>
-                          <Text style={{ color: '#fff' }}>キャンセル</Text>
+                        }} style={[styles.buttonInRow, { backgroundColor: '#888' }]}>
+                          <Text style={styles.buttonText}>キャンセル</Text>
                         </Pressable>
                       </View>
                     </ImageBackground>
@@ -219,16 +239,18 @@ export default function App() {
                   {demoMessages.map((msg) => (
                     <TouchableOpacity
                       key={msg.id}
-                      style={styles.bottleItem}
+                      style={{width: 80, alignItems: 'center'}}
                       activeOpacity={0.7}
                       onPress={() => {
-                        console.log("Bottle tapped:", msg.title); // ← デバッグ
+                        fadeAnim.setValue(0);
+                        fadeIn();
                         setReadingMessage(msg);
+                        setBoxVisible(false);
                       }}
                     >
                       <Image
                         source={require('./assets/bottle.png')}
-                        style={styles.bottleImage}
+                        style={{width: 80, height: 100, resizeMode: 'contain'}}
                       />
                       <Text numberOfLines={1} style={styles.bottleLabel}>
                         {msg.title}
@@ -239,17 +261,29 @@ export default function App() {
 
                 <TouchableOpacity
                   onPress={() => setBoxVisible(false)}
-                  style={styles.closeBoxButton}
+                  style={[styles.button, {position: 'absolute', bottom: -20, backgroundColor: '#999'}]}
                 >
-                  <Text style={{ color: '#fff' }}>閉じる</Text>
+                  <Text style={styles.buttonText}>閉じる</Text>
                 </TouchableOpacity>
               </ImageBackground>
             </View>
           </Modal>
 
-          {/* 手紙の内容を表示するモーダル */}
-          <Modal visible={!!readingMessage} animationType="fade" transparent={true}>
-            <View style={styles.overlay}>
+          {/* 手紙の内容を表示するモーダル (カスタム View で) */}
+          {!!readingMessage && ( // readingMessage が null でないときだけこの View を表示
+            <Animated.View style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: Dimensions.get('window').width,
+                height: Dimensions.get('window').height,
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                zIndex: 999,
+                opacity: fadeAnim, // ★ Animated.Value を opacity に適用
+              }}>
+              {/* 便箋のコンテナ */}
               <View style={styles.letterNoteContainer}>
                 <ImageBackground
                   source={require('./assets/letter.png')}
@@ -260,18 +294,24 @@ export default function App() {
                     <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 8 }}>
                       {readingMessage?.title}
                     </Text>
-                    <Text style={{ fontSize: 16, color: '#333' }}>{readingMessage?.content}</Text>
+                    <Text style={{ fontSize: 16, color: '#333' }}>
+                      {readingMessage?.content}
+                    </Text>
                   </ScrollView>
                   <Pressable
-                    style={[styles.letterSend, { backgroundColor: '#888', margin: 20 }]}
-                    onPress={() => setReadingMessage(null)}
+                    style={[styles.button, {position: 'absolute', bottom:20}]}
+                    onPress={() => {
+                      fadeOut();
+                      setBoxVisible(true); // ボックスを再表示
+
+                    }}
                   >
-                    <Text style={{ color: '#fff' }}>瓶に戻す</Text>
+                    <Text style={styles.buttonText}>瓶に戻す</Text>
                   </Pressable>
                 </ImageBackground>
               </View>
-            </View>
-          </Modal>
+            </Animated.View>
+          )}
         </View>
       </ImageBackground>
     </SafeAreaView>
@@ -281,8 +321,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    // backgroundColor: '#fff',
     justifyContent: 'center',
   },
   overlay: {
@@ -295,45 +333,57 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
-  },
-  settingsButton: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    zIndex: 10,
-  },
-  settingContent: {
-    width: '85%',
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
+    zIndex: 100,
   },
   settingTitle: {
-    fontSize: 20,
+    fontSize: 24,
     marginBottom: 12,
     textAlign: 'center',
+    color: '#fff',
+    fontWeight: 'bold'
   },
   modalInput: {
     borderColor: '#ccc',
+    backgroundColor: '#fff',
     borderWidth: 1,
     marginBottom: 12,
     padding: 10,
     borderRadius: 5,
   },
-  modalButton: {
+
+  // ボタンのスタイル
+  button: {
     backgroundColor: '#007AFF',
     padding: 10,
-    borderRadius: 5,
+    borderRadius: 8,
+    justifyContent: 'center',
     alignItems: 'center',
-    flex: 1,
+    alignSelf: 'center',
+    height: 45,
     marginHorizontal: 5,
   },
-  writeButton: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    zIndex: 10,
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  buttonRowContainer: { // ボタンを横並びにするためのコンテナ
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 15,
+  },
+  buttonInRow: {
+    backgroundColor: '#007AFF',
+    padding: 10,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    height: 45,
+    flex: 1,               // 横並びの場合、スペースを分け合う
+    marginHorizontal: 8,   // ボタン間の左右マージン
+    marginVertical: 0,     // コンテナでマージンを制御するので個別には不要に
   },
 
   // 執筆モードのスタイル
@@ -358,60 +408,27 @@ const styles = StyleSheet.create({
     lineHeight: 33.5,
   },
 
-  letterButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-
-  letterSend: {
-    backgroundColor: '#007AFF',
-    padding: 10,
-    borderRadius: 8,
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 5,
-  },
-
+  // 手紙ボックスのスタイル
   shelfBackground: {
     width: '100%',
     height: 400,  // または '80%' などでも可
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10, 
   },
-
   shelfGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-around',
-    rowGap: 30,
+    rowGap: 10,
     columnGap: 20,
     paddingHorizontal: 10,
   },
-
-  bottleItem: {
-    width: 80,
-    alignItems: 'center',
-  },
-
-  bottleImage: {
-    width: 80,
-    height: 100,
-    resizeMode: 'contain',
-  },
-
   bottleLabel: {
     marginTop: 6,
     fontSize: 14,
     color: '#fff',
     textAlign: 'center',
-  },
-
-  closeBoxButton: {
-    backgroundColor: '#0008',
-    padding: 10,
-    borderRadius: 8,
-    alignSelf: 'center',
-    marginTop: 20,
+    fontWeight: 'bold'
   },
 });
