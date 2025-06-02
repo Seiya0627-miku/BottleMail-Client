@@ -3,6 +3,7 @@ import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView,
   TouchableWithoutFeedback, Keyboard, Modal, Text, Pressable, Image, ImageBackground, FlatList,
   Animated, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import initialMessagesData from './data/messages.json';
+import * as Application from 'expo-application';
 
 const windowWidth = Dimensions.get('window').width;
 
@@ -33,11 +34,48 @@ if (actualStationeryHeight > MAX_STATIONERY_HEIGHT) {
 
 export default function App() {
   // 設定
-  const [userId, setUserId] = useState('user_abc');
+  const [userId, setUserId] = useState("unknown-user"); // 初期値は適当な文字列
   const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempUserId, setTempUserId] = useState(userId);
   const [tempIP, setTempIP] = useState(serverIP);
   const [settingsVisible, setSettingsVisible] = useState(false);
+
+  // ユーザーIDを取得 (アプリケーションのIDを使用)
+  useEffect(() => {
+    // デバイスID取得処理を useEffect 内の async 関数に記述
+    const fetchAndSetDeviceSpecificId = async () => {
+      let fetchedId = null;
+      try {
+        if (Platform.OS === 'android') {
+          fetchedId = Application.androidId;
+          console.log('Android ID:', fetchedId);
+        } else if (Platform.OS === 'ios') {
+          fetchedId = await Application.getIosIdForVendorAsync();
+          console.log('iOS ID for Vendor:', fetchedId);
+        }
+
+        if (fetchedId) {
+          setUserId(fetchedId);
+          setTempUserId(fetchedId); // 設定画面用の一時IDも初期化
+        } else {
+          // expo-application からIDが取得できなかった場合の非常にシンプルなフォールバック
+          const fallbackId = 'unknown-device';
+          console.warn('Device-specific ID could not be obtained, using fallback:', fallbackId);
+          setUserId(fallbackId);
+          setTempUserId(fallbackId);
+          Alert.alert("ID取得エラー", "デバイス固有のIDを取得できませんでした。");
+        }
+      } catch (error) {
+        console.error("Error fetching device specific ID:", error);
+        const errorFallbackId = 'error-fetching-id';
+        setUserId(errorFallbackId);
+        setTempUserId(errorFallbackId);
+        Alert.alert("ID取得エラー", "ID取得中に予期せぬエラーが発生しました。");
+      }
+    };
+
+    fetchAndSetDeviceSpecificId();
+  }, []); // このuseEffectはアプリ起動時に一度だけ実行されます
 
   // 執筆モード
   const [writingVisible, setWritingVisible] = useState(false);
@@ -250,7 +288,7 @@ export default function App() {
             </TouchableOpacity>
           </View>
           {/* 執筆ボタン */}
-          <View style={{ position: 'absolute', bottom: 20, left: 20, zIndex: 10 }}>
+          <View style={{ position: 'absolute', bottom: 15, left: 15, zIndex: 10 }}>
             <TouchableOpacity onPress={() => {
               setWritingVisible(true);
               Animated.timing(slideAnim, {
@@ -259,14 +297,14 @@ export default function App() {
                 useNativeDriver: true,
               }).start();
             }}>
-              <Image source={require('./assets/write-button.png')} style={{ width: 80, height: 80 }} />
+              <Image source={require('./assets/write-button.png')} style={{ width: 100, height: 100 }} />
             </TouchableOpacity>
           </View>
 
           {/* 手紙ボックスボタン */}
-          <View style={{ position: 'absolute', bottom: 20, right: 20, zIndex: 10 }}>
+          <View style={{ position: 'absolute', bottom: 15, right: 15, zIndex: 10 }}>
             <TouchableOpacity onPress={() => setBoxVisible(true)}>
-              <Image source={require('./assets/box-button.png')} style={{ width: 80, height: 80 }} />
+              <Image source={require('./assets/box-button.png')} style={{ width: 100, height: 100 }} />
             </TouchableOpacity>
           </View>
 
@@ -445,7 +483,7 @@ export default function App() {
 
                 <TouchableOpacity
                   onPress={() => setBoxVisible(false)}
-                  style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom:-70 }]}
+                  style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom:-55 }]}
                 >
                   <Text style={styles.buttonText}>閉じる</Text>
                 </TouchableOpacity>
@@ -454,44 +492,51 @@ export default function App() {
           </Modal>
 
           {/* 手紙の内容を表示するモーダル (カスタム View で) */}
-          {!!readingMessage && ( // readingMessage が null でないときだけこの View を表示
-            <Animated.View style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: Dimensions.get('window').width,
-                height: Dimensions.get('window').height,
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                zIndex: 999,
-                opacity: fadeAnim, // ★ Animated.Value を opacity に適用
-              }}>
-              {/* 便箋のコンテナ */}
-              <View style={styles.letterNoteContainer}>
-                <ImageBackground
-                  source={require('./assets/letter.png')}
-                  style={styles.letterNote}
-                  resizeMode="stretch"
-                >
-                  <Text style={styles.titleInput}>
-                    {readingMessage?.title}
-                  </Text>
-                  <Text style={styles.letterInput}>
-                    {readingMessage?.content}
-                  </Text>
-                  <Pressable
-                    style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom: 10 }]}
-                    onPress={() => {
-                      fadeOut();
-                      setBoxVisible(true); // ボックスを再表示
+          {!!readingMessage && (
+            <Animated.View style={[
+              styles.overlay, // ★ 新しいスタイル (下記参照)
+              { opacity: fadeAnim } // ★ 手紙を読むモーダル専用のアニメーション値
+            ]}>
+               <ScrollView
+                contentContainerStyle={{ 
+                  flexGrow: 1,
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={{ width: actualStationeryWidth, alignItems: 'center' }}>
+                  <View style={{ width: "100%", height: actualStationeryHeight }}>
+                    <ImageBackground
+                      source={require('./assets/letter.png')}
+                      style={styles.letterNote} // flex: 1 と適切なpaddingを持つスタイル
+                      resizeMode="stretch"
+                    >
+                      <ScrollView style={styles.letterContentArea}>
+                        <Text style={[styles.titleInput, { paddingBottom: 9 }]}>
+                          {readingMessage?.title}
+                        </Text>
+                        <Text style={styles.letterInput}>
+                          {readingMessage?.content}
+                        </Text>
+                      </ScrollView>
+                    </ImageBackground>
+                  </View>
 
-                    }}
-                  >
-                    <Text style={styles.buttonText}>瓶に戻す</Text>
-                  </Pressable>
-                </ImageBackground>
-              </View>
+                  <View style={styles.buttonRowContainer}>
+                    <Pressable
+                      style={[styles.button, { backgroundColor: '#AAA' }]} // ★ 以前定義したボタン共通スタイルをベースに
+                      onPress={() => {
+                        fadeOut();
+                        setBoxVisible(true);
+                      }}
+                    >
+                      <Text style={styles.buttonText}>瓶に戻す</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </ScrollView>
             </Animated.View>
           )}
         </View>
@@ -570,7 +615,7 @@ const styles = StyleSheet.create({
 
   // 執筆モードのスタイル
   letterNote: { // ★ImageBackground (便箋画像) のスタイル
-    flex: 1, // letterNoteContainer いっぱいに広がる
+    flex: 1,
     // 便箋画像の端から実際の書き込み開始位置までの「余白」
     // これらの値は、お持ちの letter.png のデザインに合わせて調整してください。
     // 例えば、画像の上端から10%の位置から書き始める、など。
@@ -614,7 +659,7 @@ const styles = StyleSheet.create({
   bottleItemOnShelf: { // 瓶のTouchableOpacity用のスタイル
     // (shelfGridの幅) / 3 から、左右のマージンを引いた値が目安
     width: '30%',     // ★ shelfGridの幅に対して30% (3つ並べるので約33.3%からマージン分を引く)
-    aspectRatio: 0.833, // 瓶の縦横比 (例: 幅70, 高さ100なら 70/100 = 0.7)
+    aspectRatio: 0.8536, // 瓶の縦横比 (例: 幅70, 高さ100なら 70/100 = 0.7)
     alignItems: 'center',
     justifyContent: 'center', // 瓶画像とラベルをコンテナ内で中央に
     marginHorizontal: '1.5%', // 瓶同士の左右の間隔 (30% * 3 + 1.5% * 6 = 99%)
@@ -625,7 +670,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   bottleLabel: {
-    marginTop: 6,
+    marginTop: 4,
     fontSize: 14,
     color: '#fff',
     textAlign: 'center',
@@ -645,7 +690,7 @@ const styles = StyleSheet.create({
   },
   pageIndicatorContainer: {
     position: 'absolute', // 棚画像の上に重ねて表示
-    bottom: 5, // 閉じるボタンとの兼ね合いで調整 (棚の下部からの位置)
+    bottom: 10, // 閉じるボタンとの兼ね合いで調整 (棚の下部からの位置)
     // left: 0, right: 0, // 横方向中央にしたい場合
     alignSelf: 'center', // これで横方向中央に
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
