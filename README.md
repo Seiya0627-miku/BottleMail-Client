@@ -20,6 +20,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 npmコマンドからインストールします。
 ```powershell:Expoのインストール
 npm install -g expo-cli
+npx expo install expo-application
 #expoコマンドが使えるか確認
 expo --version
 ```
