@@ -4,6 +4,7 @@ import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView,
   Animated, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import initialMessagesData from './data/messages.json';
 import * as Application from 'expo-application';
+import * as Crypto from 'expo-crypto';
 
 const windowWidth = Dimensions.get('window').width;
 
@@ -45,6 +46,8 @@ export default function App() {
     // デバイスID取得処理を useEffect 内の async 関数に記述
     const fetchAndSetDeviceSpecificId = async () => {
       let fetchedId = null;
+      let shortenedId = null;
+      
       try {
         if (Platform.OS === 'android') {
           fetchedId = Application.androidId;
@@ -55,8 +58,19 @@ export default function App() {
         }
 
         if (fetchedId) {
-          setUserId(fetchedId);
-          setTempUserId(fetchedId); // 設定画面用の一時IDも初期化
+          // 元のIDをSHA-256でハッシュ化 (結果は16進数文字列)
+          const digest = await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256, // ハッシュアルゴリズム
+            fetchedId,                     // ハッシュ化する元の文字列
+            { encoding: Crypto.CryptoEncoding.HEX } // 出力を16進数文字列に
+          );
+
+          // 3. ハッシュ化された文字列を短縮 (先頭12文字)
+          const desiredLength = 12;
+          shortenedId = digest.substring(0, desiredLength);
+
+          setUserId(`user-${shortenedId}`);
+          setTempUserId(`user-${shortenedId}`);
         } else {
           // expo-application からIDが取得できなかった場合の非常にシンプルなフォールバック
           const fallbackId = 'unknown-device';

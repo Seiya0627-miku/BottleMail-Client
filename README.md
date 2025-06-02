@@ -21,6 +21,7 @@ npmコマンドからインストールします。
 ```powershell:Expoのインストール
 npm install -g expo-cli
 npx expo install expo-application
+npx expo install expo-crypto
 #expoコマンドが使えるか確認
 expo --version
 ```
