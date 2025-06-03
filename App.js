@@ -39,57 +39,82 @@ export default function App() {
   const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempUserId, setTempUserId] = useState(userId);
   const [tempIP, setTempIP] = useState(serverIP);
+  const [isNewUser, setIsNewUser] = useState(null); // To track if user is new for tutorial
+  const [isLoadingUserId, setIsLoadingUserId] = useState(true); // Loading state for ID check
   const [settingsVisible, setSettingsVisible] = useState(false);
 
-  // ユーザーIDを取得 (アプリケーションのIDを使用)
+  // アプリ起動時の処理
   useEffect(() => {
-    // デバイスID取得処理を useEffect 内の async 関数に記述
-    const fetchAndSetDeviceSpecificId = async () => {
-      let fetchedId = null;
-      let shortenedId = null;
-      
+    const initializeApp = async () => {
+      let idForApp = null;
+      let fetchedShortId = null; // To store the "user-xxxx" formatted ID
+
+      // 1. Get or Generate Device/User ID (shortened with "user-" prefix)
       try {
+        let originalDeviceId = null;
         if (Platform.OS === 'android') {
-          fetchedId = Application.androidId;
-          console.log('Android ID:', fetchedId);
+          originalDeviceId = Application.androidId;
         } else if (Platform.OS === 'ios') {
-          fetchedId = await Application.getIosIdForVendorAsync();
-          console.log('iOS ID for Vendor:', fetchedId);
+          originalDeviceId = await Application.getIosIdForVendorAsync();
         }
 
-        if (fetchedId) {
-          // 元のIDをSHA-256でハッシュ化 (結果は16進数文字列)
+        if (originalDeviceId) {
           const digest = await Crypto.digestStringAsync(
-            Crypto.CryptoDigestAlgorithm.SHA256, // ハッシュアルゴリズム
-            fetchedId,                     // ハッシュ化する元の文字列
-            { encoding: Crypto.CryptoEncoding.HEX } // 出力を16進数文字列に
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            originalDeviceId,
+            { encoding: Crypto.CryptoEncoding.HEX }
           );
-
-          // 3. ハッシュ化された文字列を短縮 (先頭12文字)
           const desiredLength = 12;
-          shortenedId = digest.substring(0, desiredLength);
-
-          setUserId(`user-${shortenedId}`);
-          setTempUserId(`user-${shortenedId}`);
+          const hashedPart = digest.substring(0, desiredLength);
+          fetchedShortId = `user-${hashedPart}`;
+          idForApp = fetchedShortId; // Use this for server communication
         } else {
-          // expo-application からIDが取得できなかった場合の非常にシンプルなフォールバック
-          const fallbackId = 'unknown-device';
-          console.warn('Device-specific ID could not be obtained, using fallback:', fallbackId);
-          setUserId(fallbackId);
-          setTempUserId(fallbackId);
-          Alert.alert("ID取得エラー", "デバイス固有のIDを取得できませんでした。");
+          idForApp = `user-fallback-${Math.random().toString(36).substring(2,8)}`; // Simple fallback
+          Alert.alert("ID取得エラー", "デバイス固有IDの取得に失敗しました。一時IDを使用します。");
         }
+        
+        setUserId(idForApp);
+        setTempUserId(idForApp); // For settings screen
+
       } catch (error) {
-        console.error("Error fetching device specific ID:", error);
-        const errorFallbackId = 'error-fetching-id';
-        setUserId(errorFallbackId);
-        setTempUserId(errorFallbackId);
-        Alert.alert("ID取得エラー", "ID取得中に予期せぬエラーが発生しました。");
+        console.error("Error initializing user ID:", error);
+        idForApp = `user-error-${Math.random().toString(36).substring(2,8)}`;
+        setUserId(idForApp);
+        setTempUserId(idForApp);
+        Alert.alert("ID初期化エラー", "ユーザーIDの準備中にエラーが発生しました。");
+        setIsLoadingUserId(false);
+        return; // Stop initialization if ID generation fails critically
       }
+
+      // 2. Check user status with the server using the obtained idForApp
+      if (idForApp && serverIP) {
+        try {
+          const response = await fetch(`${serverIP}/check_user/${idForApp}`, { method: 'POST' }); // Ensure this matches server endpoint
+          if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+          }
+          const data = await response.json();
+          setIsNewUser(data.is_new_user);
+          console.log(`User status from server for ${idForApp}: New user = ${data.is_new_user}`);
+          // --- チュートリアル用に手紙一枚書かせる ---
+          // if (data.is_new_user) {
+          //   // TODO: Trigger tutorial flow
+          //   Alert.alert("ようこそ！", "ボトルメッセージへようこそ。最初に手紙を書いてみましょう。");
+          //   // For now, maybe open writing modal directly for new user after a slight delay or a welcome screen
+          //   // setWritingVisible(true); // Example: Open writing modal for tutorial
+          // }
+        } catch (e) {
+          console.error("Failed to check user status with server:", e);
+          Alert.alert("サーバー接続エラー", "ユーザー情報の確認に失敗しました。ネットワーク接続を確認してください。");
+          setIsNewUser(null); // Set to undecided or handle as error
+        }
+      }
+      setIsLoadingUserId(false);
     };
 
-    fetchAndSetDeviceSpecificId();
-  }, []); // このuseEffectはアプリ起動時に一度だけ実行されます
+    initializeApp();
+  }, [serverIP]); // Re-run if serverIP changes, userId is now set within this effect
+
 
   // 執筆モード
   const [writingVisible, setWritingVisible] = useState(false);
