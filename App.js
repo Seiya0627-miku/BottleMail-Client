@@ -181,7 +181,7 @@ export default function App() {
         
         // 最終的に取得できたメッセージをセット (何もなければ空配列か初期データ)
         if (loadedFromServer || (loadedMessages && loadedMessages.length > 0)) {
-          setMessages(loadedMessages);
+          setMessages(initialMessagesData);
         } else {
           console.log("利用可能な手紙ボックスデータがないため、初期デモデータ（または空）を使用します。");
           setMessages(initialMessagesData); // initialMessagesDataが定義されていればそれを使う
@@ -709,7 +709,7 @@ export default function App() {
 
                 {/* メッセージが1件もない場合の表示 (任意) */}
                 {shelfContainerWidth > 0 && paginatedMessages.length === 0 && (
-                  <View style={[styles.shelfPage, { width: shelfContainerWidth, justifyContent: 'center', alignItems: 'center', paddingBottom: '6%' }]}>
+                  <View style={[styles.shelfPage, { width: actualShelfDisplayWidth, justifyContent: 'center', alignItems: 'center', marginBottom: '20%' }]}>
                       <Text style={styles.emptyShelfText}>まだ手紙がないみたい…</Text>
                   </View>
                 )}
@@ -978,21 +978,19 @@ const styles = StyleSheet.create({
     width: actualShelfDisplayWidth,
     height: actualShelfDisplayHeight,  // または '80%' などでも可
     zIndex: 10, 
-    // backgroundColor: 'rgba(255,255,255,0.8)', // 半透明の背景色
+    // backgroundColor: 'rgba(0,255,0,0.5)', // 半透明の背景色
   },
   shelfGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-start', // ★ 左詰めにする (または 'space-between' や 'center' でアイテムを中央寄せ)
-    // alignItems: 'center', // 各行のアイテムを中央揃え（高さが異なる場合など）
-    width: '85%', // ★ shelfBackground の幅に対して、グリッドが占める幅 (例: 85%)
-                    // この幅の中に3つの瓶がきれいに収まるように調整します
-    // paddingVertical: 10, // グリッド全体の上下の余白
+    width: '85%', // shelfBackground の幅に対して、グリッドが占める幅 (例: 85%)
+                  // この幅の中に3つの瓶がきれいに収まるように調整します
     // backgroundColor: 'rgba(255,0,0,0.2)', // デバッグ用に背景色をつけて確認すると良い
   },
   bottleItemOnShelf: { // 瓶のTouchableOpacity用のスタイル
     // (shelfGridの幅) / 3 から、左右のマージンを引いた値が目安
-    width: '30%',     // ★ shelfGridの幅に対して30% (3つ並べるので約33.3%からマージン分を引く)
+    width: '30%',     // shelfGridの幅に対して30% (3つ並べるので約33.3%からマージン分を引く)
     height: '30%',
     aspectRatio: 0.8536, // 瓶の縦横比 (例: 幅70, 高さ100なら 70/100 = 0.7)
     alignItems: 'center',
@@ -1020,13 +1018,13 @@ const styles = StyleSheet.create({
     height: '100%',           // 親のImageBackgroundの高さに合わせる
     justifyContent: 'flex-start', // ★★★ グリッドをページの上端から配置する
     alignItems: 'center',         // ★★★ グリッド自体をページ内で水平中央に配置
-    paddingTop: 30,               // ★ 棚の画像の上端から最初の瓶までの余白 (お好みで調整)
-    paddingBottom: 20,            // ★ 棚の画像の下端と最後の瓶またはページインジケータとの余白 (お好みで調整)
+    paddingTop: '9%',               // ★ 棚の画像の上端から最初の瓶までの余白 (お好みで調整)
+    paddingBottom: '6%',            // ★ 棚の画像の下端と最後の瓶またはページインジケータとの余白 (お好みで調整)
     // backgroundColor: 'rgba(0,0,255,0.1)', // デバッグ用に一時的に背景色をつけると分かりやすい
   },
   pageIndicatorContainer: {
     position: 'absolute', // 棚画像の上に重ねて表示
-    bottom: 10, // 閉じるボタンとの兼ね合いで調整 (棚の下部からの位置)
+    bottom: '2.5%', // 閉じるボタンとの兼ね合いで調整 (棚の下部からの位置)
     // left: 0, right: 0, // 横方向中央にしたい場合
     alignSelf: 'center', // これで横方向中央に
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
