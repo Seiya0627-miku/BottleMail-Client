@@ -20,6 +20,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 npmコマンドからインストールします。
 ```powershell:Expoのインストール
 npm install -g expo-cli
+npm install @react-native-async-storage/async-storage
 npx expo install expo-application
 npx expo install expo-crypto
 #expoコマンドが使えるか確認
