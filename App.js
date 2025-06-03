@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, 
   TouchableWithoutFeedback, Keyboard, Modal, Text, Pressable, Image, ImageBackground, FlatList,
-  Animated, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+  Animated, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import initialMessagesData from './data/messages.json';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 
 const windowWidth = Dimensions.get('window').width;
+const ASYNC_STORAGE_MESSAGES_KEY = '@MyApp:messages';
+
 
 // --- 便箋のサイズ制約 ---
 const MAX_STATIONERY_WIDTH = 300;
@@ -31,7 +34,20 @@ if (actualStationeryHeight > MAX_STATIONERY_HEIGHT) {
   // 高さが制限されたので、アスペクト比を保つために幅を再計算
   actualStationeryWidth = actualStationeryHeight / TARGET_ASPECT_RATIO_H_W;
 }
-// --- ここまでが便箋サイズの計算 ---
+
+// --- 棚の表示サイズ制約 ---
+const shelfAspectRatio_H_W = 1100 / 939;
+// 棚の表示幅を決定 (画面幅の90%を上限とするが、アスペクト比を保った結果、高さが400を超えないように)
+// まず、高さ400を基準に許容される最大の幅を計算
+let MAX_SHELF_HEIGHT = 400 / shelfAspectRatio_H_W;
+
+// 画面幅の80% (または90%)
+let MAX_SHELF_WIDTH = windowWidth * 0.9; // 例: 90%
+
+// より小さい方を棚の実際の表示幅とする
+const actualShelfDisplayWidth = Math.min(MAX_SHELF_HEIGHT, MAX_SHELF_WIDTH);
+const actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
+
 
 export default function App() {
   // 設定
@@ -40,17 +56,24 @@ export default function App() {
   const [tempUserId, setTempUserId] = useState(userId);
   const [tempIP, setTempIP] = useState(serverIP);
   const [isNewUser, setIsNewUser] = useState(null); // To track if user is new for tutorial
-  const [isLoadingUserId, setIsLoadingUserId] = useState(true); // Loading state for ID check
+  const [isLoadingApp, setIsLoadingApp] = useState(true);
   const [settingsVisible, setSettingsVisible] = useState(false);
+
+  // 手紙ボックス
+  const [boxVisible, setBoxVisible] = useState(false);
+  const [readingMessage, setReadingMessage] = useState(null); // 現在読んでいる手紙
+  const [messages, setMessages] = useState([]); // 手紙ボックスの内容。初期値は空配列
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false); // 手紙ボックスのローディング状態
 
   // アプリ起動時の処理
   useEffect(() => {
     const initializeApp = async () => {
-      setIsLoadingUserId(true);
+      setIsLoadingApp(true);
+
       let idForApp = null;
       let fetchedShortId = null; // To store the "user-xxxx" formatted ID
 
-      // 1. Get or Generate Device/User ID (shortened with "user-" prefix)
+      // 1. ユーザーIDの生成
       try {
         let originalDeviceId = null;
         if (Platform.OS === 'android') {
@@ -83,11 +106,10 @@ export default function App() {
         setUserId(idForApp);
         setTempUserId(idForApp);
         Alert.alert("ID初期化エラー", "ユーザーIDの準備中にエラーが発生しました。");
-        setIsLoadingUserId(false);
         return; // Stop initialization if ID generation fails critically
       }
 
-      // 2. Check user status with the server using the obtained idForApp
+      // 2. ユーザーIDをサーバーで確認
       if (idForApp && serverIP) {
         try {
           const response = await fetch(`${serverIP}/check_user/${idForApp}`, { method: 'POST' }); // Ensure this matches server endpoint
@@ -109,8 +131,68 @@ export default function App() {
           Alert.alert("サーバー接続エラー", "ユーザー情報の確認に失敗しました。ネットワーク接続を確認してください。");
           setIsNewUser(null); // Set to undecided or handle as error
         }
+
+        // 3. 手紙ボックスの内容をロード (userIdが確定し、フォールバック/エラーIDでない場合)
+        setIsLoadingMessages(true); // 手紙ボックスのローディング開始
+        let loadedMessages = [];
+        let loadedFromServer = false;
+
+        // (A) まずサーバーから取得を試みる
+        try {
+          const letterboxUrl = `${serverIP}/letterbox/${idForApp}`;
+          console.log("サーバーから手紙ボックスのロードを試みます:", letterboxUrl);
+          const serverResponse = await fetch(letterboxUrl);
+
+          if (serverResponse.ok) {
+            const serverData = await serverResponse.json();
+            loadedMessages = serverData;
+            // サーバーから取得成功したら、ローカルストレージも更新
+            await AsyncStorage.setItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`, JSON.stringify(loadedMessages));
+            console.log("手紙ボックスをサーバーからロードし、ローカルに保存しました。");
+            loadedFromServer = true;
+          } else {
+            // サーバーからのレスポンスはあるがエラーだった場合 (404 Not Found など)
+            console.warn(`サーバーからの手紙ボックス取得失敗: ${serverResponse.status}, URL: ${letterboxUrl}`);
+            // この場合は、次にローカルストレージからの読み込みを試みる (loadedFromServer は false のまま)
+          }
+        } catch (networkError) {
+          // fetch自体が失敗した場合 (ネットワーク接続なし、サーバーダウンなど)
+          console.warn("サーバーからの手紙ボックス取得中にネットワークエラー:", networkError.message);
+          // この場合も、次にローカルストレージからの読み込みを試みる (loadedFromServer は false のまま)
+        }
+
+        // (B) サーバーから取得できなかった場合、ローカルストレージから読み込む
+        if (!loadedFromServer) {
+          try {
+            console.log("ローカルストレージから手紙ボックスのロードを試みます。");
+            const storedMessagesJson = await AsyncStorage.getItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`);
+            if (storedMessagesJson !== null) {
+              loadedMessages = JSON.parse(storedMessagesJson);
+              console.log("ローカルストレージから手紙ボックスをロードしました。");
+            } else {
+              console.log("ローカルストレージにも手紙ボックスデータがありません。");
+              // loadedMessages は空のまま (または initialMessagesData を使う)
+            }
+          } catch (asyncStorageError) {
+            console.error("AsyncStorageからの手紙ボックスロードに失敗:", asyncStorageError);
+            // loadedMessages は空のまま (または initialMessagesData を使う)
+          }
+        }
+        
+        // 最終的に取得できたメッセージをセット (何もなければ空配列か初期データ)
+        if (loadedFromServer || (loadedMessages && loadedMessages.length > 0)) {
+          setMessages(loadedMessages);
+        } else {
+          console.log("利用可能な手紙ボックスデータがないため、初期デモデータ（または空）を使用します。");
+          setMessages(initialMessagesData); // initialMessagesDataが定義されていればそれを使う
+        }
+      } else {
+        // 有効なuserIdがない、またはserverIPがない場合はデモデータを表示
+        console.log("有効なuserIdまたはserverIPがないため、デモデータを使用します。");
+        setMessages(initialMessagesData);
       }
-      setIsLoadingUserId(false);
+      setIsLoadingMessages(false); // 手紙ボックスのローディング終了
+      setIsLoadingApp(false); // ★ 全ての初期化処理が終わったらローディング終了
     };
 
     initializeApp();
@@ -226,30 +308,6 @@ export default function App() {
   const systemMessageAnimY = useRef(new Animated.Value(-150)).current; // 初期位置は画面外上部 (-150など十分な値)
   const systemMessageOpacity = useRef(new Animated.Value(0)).current;  // 初期透明度は0
 
-  // 手紙ボックス
-  const [boxVisible, setBoxVisible] = useState(false);
-  const [readingMessage, setReadingMessage] = useState(null); // 現在読んでいる手紙
-  const [messages, setMessages] = useState(initialMessagesData);
-  const displayMessages = useMemo(() => {
-    return [...messages].reverse();
-  }, [messages]);
-
-  const itemsPerPage = 9; // 1ページあたりのアイテム数
-  // ページ分割されたメッセージの配列 (例: [ [msg1-9], [msg10-18], ... ])
-  const paginatedMessages = useMemo(() => {
-    if (!displayMessages || displayMessages.length === 0) {
-      return []; // メッセージがない場合は空の配列
-    }
-    const pages = [];
-    for (let i = 0; i < displayMessages.length; i += itemsPerPage) {
-      pages.push(displayMessages.slice(i, i + itemsPerPage));
-    }
-    return pages;
-  }, [displayMessages]);
-  const totalPages = paginatedMessages.length;
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [shelfContainerWidth, setShelfContainerWidth] = useState(0); // 棚コンテナの実際の幅
-
   useEffect(() => {
     let hideTimerId = null;
 
@@ -359,6 +417,34 @@ export default function App() {
       setIsSending(false);
     }
   };
+
+
+  // 手紙ボックスのメッセージを日付順にソートして表示
+  const displayMessages = useMemo(() => {
+    if (!messages || messages.length === 0) return [];
+    // date_received フィールドで新しいものが先頭に来るようにソート
+    // date_received がない場合は、date や date_sent など、利用可能な日付フィールドを使う
+    return [...messages].sort((a, b) => {
+      const dateA = new Date(a.date_received || a.date || a.date_sent || 0);
+      const dateB = new Date(b.date_received || b.date || b.date_sent || 0);
+      return dateB - dateA; // 降順 (新しいものが先)
+    });
+    // .reverse() は不要になります、sortで直接降順にしているため
+  }, [messages]);
+
+  const itemsPerPage = 9; // 1ページあたりのアイテム数
+  // ページ分割されたメッセージの配列 (例: [ [msg1-9], [msg10-18], ... ])
+  const paginatedMessages = useMemo(() => {
+    if (!displayMessages || displayMessages.length === 0) return []; // メッセージがない場合は空の配列
+    const pages = [];
+    for (let i = 0; i < displayMessages.length; i += itemsPerPage) {
+      pages.push(displayMessages.slice(i, i + itemsPerPage));
+    }
+    return pages;
+  }, [displayMessages]);
+  const totalPages = paginatedMessages.length;
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [shelfContainerWidth, setShelfContainerWidth] = useState(0); // 棚コンテナの実際の幅
 
   const saveSettings = () => {
     setUserId(tempUserId);
@@ -577,9 +663,13 @@ export default function App() {
                   setShelfContainerWidth(width);
                 }}
               >
-                {/* shelfContainerWidthが取得され、表示するメッセージがある場合のみFlatListを表示 */}
-                {shelfContainerWidth > 0 && paginatedMessages.length > 0 && (
-                  <FlatList
+                {/* ローディング表示 */}
+                {isLoadingMessages ? (
+                  <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+                    <ActivityIndicator size="large" color="#fff" />
+                  </View>
+                ) : shelfContainerWidth > 0 && paginatedMessages.length > 0 && (
+                  <FlatList // 手紙ボックスのメッセージをページごとに表示
                     data={paginatedMessages}
                     renderItem={({ item: pageMessages, index }) => (
                       // 各ページコンテナ。幅を親のImageBackgroundに合わせる
@@ -591,7 +681,7 @@ export default function App() {
                               style={styles.bottleItemOnShelf}
                               activeOpacity={0.7}
                               onPress={() => {
-                                setReadingMessage(msg);
+                                setReadingMessage({...msg, isReceivedMessage: false });
                                 setBoxVisible(false);
                                 fadeAnim.setValue(0); // フェードインのために透明度をリセット
                                 fadeIn(); // 手紙を読むときにフェードイン
@@ -619,8 +709,8 @@ export default function App() {
 
                 {/* メッセージが1件もない場合の表示 (任意) */}
                 {shelfContainerWidth > 0 && paginatedMessages.length === 0 && (
-                  <View style={[styles.shelfPage, { width: shelfContainerWidth, justifyContent: 'center', alignItems: 'center' }]}>
-                      <Text style={styles.emptyShelfText}>手紙はまだありません</Text>
+                  <View style={[styles.shelfPage, { width: shelfContainerWidth, justifyContent: 'center', alignItems: 'center', paddingBottom: '6%' }]}>
+                      <Text style={styles.emptyShelfText}>まだ手紙がないみたい…</Text>
                   </View>
                 )}
 
@@ -680,8 +770,9 @@ export default function App() {
                     <Pressable
                       style={[styles.button, { backgroundColor: '#AAA' }]} // ★ 以前定義したボタン共通スタイルをベースに
                       onPress={async () => {
+                        const currentMessage = readingMessage;
                         if (readingMessage?.isReceivedMessage && readingMessage.id) {
-                          // ★★★ 受信した手紙の場合の処理 ★★★
+                          // 新しく受信した手紙の場合の処理
                           try {
                             const currentServerIP = tempIP || serverIP;
                             const url = `${currentServerIP}/mark_letter_opened/${userId}/${readingMessage.id}`;
@@ -695,6 +786,23 @@ export default function App() {
                             const result = await response.json();
                             if (result.status === "marked_opened_and_in_received" || result.status === "already_in_received") {
                               console.log(`手紙 ${readingMessage.id} を開封済みとしてサーバーに通知しました。`);
+                              setMessages(prevMessages => {
+                                if (!prevMessages.find(m => m.id === result.letter.id)) {
+                                  // サーバーから返されたフォーマットをそのまま使う
+                                  // dateフィールド名がクライアントのmessagesステートと一致しているか確認
+                                  // サーバーが返す `result.letter` が `id, title, content, date_received` を持つ想定
+                                  const newLetterForBox = {
+                                      id: result.letter.id,
+                                      title: result.letter.title,
+                                      content: result.letter.content,
+                                      date_received: result.letter.date_received,
+                                  };
+                                  const updatedMessages = [...prevMessages, newLetterForBox];
+                                  // AsyncStorageへの保存は専用のuseEffectに任せるか、ここで明示的に行う
+                                  AsyncStorage.setItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${userId}`, JSON.stringify(updatedMessages))
+                                      .catch(e => console.error("手紙ボックスへの追加保存失敗:", e));
+                                }
+                              });
                               fadeOut();
                             } else {
                               Alert.alert("エラー", "手紙の開封状態の更新に失敗しました。");
@@ -867,11 +975,10 @@ const styles = StyleSheet.create({
   },
   // 手紙ボックスのスタイル
   shelfBackground: {
-    width: '100%',
-    height: 400,  // または '80%' などでも可
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: actualShelfDisplayWidth,
+    height: actualShelfDisplayHeight,  // または '80%' などでも可
     zIndex: 10, 
+    // backgroundColor: 'rgba(255,255,255,0.8)', // 半透明の背景色
   },
   shelfGrid: {
     flexDirection: 'row',
@@ -886,10 +993,12 @@ const styles = StyleSheet.create({
   bottleItemOnShelf: { // 瓶のTouchableOpacity用のスタイル
     // (shelfGridの幅) / 3 から、左右のマージンを引いた値が目安
     width: '30%',     // ★ shelfGridの幅に対して30% (3つ並べるので約33.3%からマージン分を引く)
+    height: '30%',
     aspectRatio: 0.8536, // 瓶の縦横比 (例: 幅70, 高さ100なら 70/100 = 0.7)
     alignItems: 'center',
     justifyContent: 'center', // 瓶画像とラベルをコンテナ内で中央に
     marginHorizontal: '1.5%', // 瓶同士の左右の間隔 (30% * 3 + 1.5% * 6 = 99%)
+    marginVertical: '1.5%', // 瓶同士の左右の間隔 (30% * 3 + 1.5% * 6 = 99%)
   },
   bottleImageOnShelf: { // 瓶のImageコンポーネント用のスタイル
     width: '75%',  // bottleItemOnShelfの幅に対して80%
@@ -897,7 +1006,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   bottleLabel: {
-    marginTop: 4,
+    marginTop: '3%',
     fontSize: 14,
     color: '#fff',
     textAlign: 'center',
@@ -932,8 +1041,8 @@ const styles = StyleSheet.create({
   },
   emptyShelfText: { // メッセージがない場合のテキストスタイル
     color: '#fff', // 棚の背景に合わせて調整
-    fontSize: 16,
-    // fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 
   // 送信状態のメッセージ表示用スタイル
