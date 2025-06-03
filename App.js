@@ -51,13 +51,31 @@ const actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
 
 export default function App() {
   // 設定
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const settingsButtonRotateAnim = useRef(new Animated.Value(0)).current; // 0: 0度, 1: 180度 を表現
   const [userId, setUserId] = useState("unknown-user"); // 初期値は適当な文字列
-  const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempUserId, setTempUserId] = useState(userId);
+  const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempIP, setTempIP] = useState(serverIP);
+  const [preferences, setPreferences] = useState(''); // 実際に保存される設定
+  const [tempPreferences, setTempPreferences] = useState(preferences); // 設定モーダル内の一時的な値
+
   const [isNewUser, setIsNewUser] = useState(null); // To track if user is new for tutorial
   const [isLoadingApp, setIsLoadingApp] = useState(true);
-  const [settingsVisible, setSettingsVisible] = useState(false);
+
+  useEffect(() => {
+    // settingsVisible の状態に応じて、回転アニメーションを実行
+    Animated.timing(settingsButtonRotateAnim, {
+      toValue: settingsVisible ? 1 : 0, // settingsVisibleがtrueなら1(180度へ)、falseなら0(0度へ)
+      duration: 300, // アニメーション時間 (0.3秒)
+      useNativeDriver: true, // パフォーマンス向上のため
+    }).start();
+  }, [settingsVisible, settingsButtonRotateAnim]);
+
+  const settingsButtonSpin = settingsButtonRotateAnim.interpolate({
+    inputRange: [0, 1], // settingsButtonRotateAnim の値が0から1に変化する間に
+    outputRange: ['0deg', '180deg'], // transformのrotateプロパティは'0deg'から'180deg'に変化
+  });
 
   // 手紙ボックス
   const [boxVisible, setBoxVisible] = useState(false);
@@ -181,7 +199,7 @@ export default function App() {
         
         // 最終的に取得できたメッセージをセット (何もなければ空配列か初期データ)
         if (loadedFromServer || (loadedMessages && loadedMessages.length > 0)) {
-          setMessages(initialMessagesData);
+          setMessages(loadedMessages);
         } else {
           console.log("利用可能な手紙ボックスデータがないため、初期デモデータ（または空）を使用します。");
           setMessages(initialMessagesData); // initialMessagesDataが定義されていればそれを使う
@@ -192,7 +210,7 @@ export default function App() {
         setMessages(initialMessagesData);
       }
       setIsLoadingMessages(false); // 手紙ボックスのローディング終了
-      setIsLoadingApp(false); // ★ 全ての初期化処理が終わったらローディング終了
+      setIsLoadingApp(false); // 全ての初期化処理が終わったらローディング終了
     };
 
     initializeApp();
@@ -200,16 +218,16 @@ export default function App() {
 
   // --- 手紙受信・開封フロー用 ---
   const [arrivedBottle, setArrivedBottle] = useState(null); // ホームに表示する新しい瓶のデータ (1通)
-  const arrivedBottleOpacityAnim = useRef(new Animated.Value(0)).current; // ★ホームの瓶のフェードイン用
-  const [bottleOpeningOverlayVisible, setBottleOpeningOverlayVisible] = useState(false); // ★瓶開封オーバーレイ表示用
-  const largeBottleSlideAnimY = useRef(new Animated.Value(Dimensions.get('window').height)).current; // ★大きな瓶のスライドイン用 (初期位置は画面下外)
-  const [largeBottleTapCount, setLargeBottleTapCount] = useState(0); // ★大きな瓶のタップ回数)
+  const arrivedBottleOpacityAnim = useRef(new Animated.Value(0)).current; // ホームの瓶のフェードイン用
+  const [bottleOpeningOverlayVisible, setBottleOpeningOverlayVisible] = useState(false); // 瓶開封オーバーレイ表示用
+  const largeBottleSlideAnimY = useRef(new Animated.Value(Dimensions.get('window').height)).current; // 大きな瓶のスライドイン用 (初期位置は画面下外)
+  const [largeBottleTapCount, setLargeBottleTapCount] = useState(0); // 大きな瓶のタップ回数
   const [isUserInCooldown, setIsUserInCooldown] = useState(false);
   const [cooldownEndTime, setCooldownEndTime] = useState(0);
 
   // 手紙の受信
   const fetchNewLetterFromServer = async () => {
-    if (!userId || !serverIP || arrivedBottle) { // ★ arrivedBottle があれば、まだ処理していないので取得しない
+    if (!userId || !serverIP || arrivedBottle) { // arrivedBottle があれば、まだ処理していないので取得しない
       return;
     }
 
@@ -270,7 +288,7 @@ export default function App() {
   const [messageToOpenDetails, setMessageToOpenDetails] = useState(null);
 
   const handleOpenNewBottle = (bottleData) => {
-    setMessageToOpenDetails(bottleData); // ★ 開封対象のメッセージを保持 (既存のステートを活用)
+    setMessageToOpenDetails(bottleData); // 開封対象のメッセージを保持 (既存のステートを活用)
     setLargeBottleTapCount(0);        // 大きな瓶のタップカウントをリセット
 
     // (A) ホーム画面の小さな瓶をフェードアウト
@@ -446,14 +464,28 @@ export default function App() {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [shelfContainerWidth, setShelfContainerWidth] = useState(0); // 棚コンテナの実際の幅
 
+  // settingsVisible が true になったときに tempPreferences を現在の preferences で初期化
+  useEffect(() => {
+    if (settingsVisible) {
+      setTempIP(serverIP);
+      setTempPreferences(preferences); // ★ 現在の設定を一時変数にコピー
+    }
+  }, [settingsVisible, userId, serverIP, preferences]); // 依存配列に preferences を追加
+
   const saveSettings = () => {
-    setUserId(tempUserId);
     setServerIP(tempIP);
+    setPreferences(tempPreferences);
     setSettingsVisible(false);
+    // TODO: 後で preferences をサーバーに送信する処理を追加
+    console.log("保存された受信好み:", tempPreferences);
+
+    setStatusMessage('✅ 設定を保存しました！');
+    console.log("保存されたサーバーIP:", tempIP);
+    console.log("保存された受信好み:", tempPreferences);
   };
   const cancelSettings = () => {
-    setTempUserId(userId); // 元の値に戻す
     setTempIP(serverIP); // 元の値に戻す
+    setTempPreferences(preferences); // 元の値に戻す
     setSettingsVisible(false); // ステートは変更しない
   };
 
@@ -486,7 +518,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      {statusMessage ? ( // 「送信成功！」の時だけこれがtrueになる
+      {statusMessage ? (
         <Animated.View style={[
           styles.systemMessageContainer,
           {
@@ -507,7 +539,13 @@ export default function App() {
           {/* 設定ボタン */}
           <View style={{ position: 'absolute', top: 20, right: 20, zIndex: 10 }}>
             <TouchableOpacity onPress={() => setSettingsVisible(true)}>
-              <Image source={require('./assets/setting-button.png')} style={{ width: 80, height: 80 }} />
+              <Animated.Image
+                source={require('./assets/setting-button.png')}
+                style={[
+                  { width: 80, height: 80 }, // 元のスタイル
+                  { transform: [{ rotate: settingsButtonSpin }] } // ★ 回転アニメーションを適用
+                ]}
+              />
             </TouchableOpacity>
           </View>
           {/* 執筆ボタン */}
@@ -531,7 +569,7 @@ export default function App() {
             </TouchableOpacity>
           </View>
 
-          {/* ★★★ 新しく届いた瓶を表示する (1通のみ) ★★★ */}
+          {/* 新しく届いた瓶を表示する (1通のみ) */}
           {arrivedBottle && !bottleOpeningOverlayVisible && !readingMessage && (
             <Animated.View style={[
               styles.newBottlesArea, // このスタイルは瓶を配置するエリア全体を指す
@@ -550,20 +588,36 @@ export default function App() {
           <Modal visible={settingsVisible} animationType="slide" transparent={true}>
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={styles.overlay}>
-                <View style={{width: '85%', backgroundColor: 'rgb(118, 182, 255)', padding: 20, borderRadius: 10}}>
+                <View style={styles.settingsModalContent}>
                   <Text style={styles.settingTitle}>設定</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="ユーザーID"
-                    value={tempUserId}
-                    onChangeText={setTempUserId}
-                  />
+
+                  {/* --- ユーザーID (表示のみ) --- */}
+                  <Text style={styles.settingLabel}>ユーザーID:</Text>
+                  <Text style={[styles.settingLabel, {color: "rgb(46, 85, 122)"}]}>{userId}</Text>
+
+                  {/* --- サーバーIPアドレス --- */}
+                  <Text style={styles.settingLabel}>サーバーアドレス:</Text>
                   <TextInput
                     style={styles.modalInput}
                     placeholder="サーバーIPアドレス"
                     value={tempIP}
                     onChangeText={setTempIP}
                   />
+
+                  {/* --- 受信好み設定 (新規追加) --- */}
+                  <Text style={styles.settingLabel}>受信好み設定 (任意):</Text>
+                  <TextInput
+                    style={styles.modalInput} // ★ 複数行用スタイルを追加
+                    placeholder="例: 明るい話題、短い手紙が好き。詩や物語も歓迎...（100文字まで）"
+                    value={tempPreferences} // ★ 新しいステート変数 (下記参照)
+                    onChangeText={setTempPreferences} // ★ 新しいステート更新関数 (下記参照)
+                    multiline={true}
+                    numberOfLines={3} // 初期表示の行数（実際の表示は内容による）
+                    maxLength={100} // 最大100文字
+                    textAlignVertical="top" // Androidで複数行入力のカーソル位置を上にする
+                  />
+
+                  {/* --- 保存ボタンとキャンセルボタン --- */}
                   <View style={styles.buttonRowContainer}>
                     <Pressable style={styles.buttonInRow} onPress={saveSettings}>
                       <Text style={styles.buttonText}>保存</Text>
@@ -709,7 +763,7 @@ export default function App() {
 
                 {/* メッセージが1件もない場合の表示 (任意) */}
                 {shelfContainerWidth > 0 && paginatedMessages.length === 0 && (
-                  <View style={[styles.shelfPage, { width: actualShelfDisplayWidth, justifyContent: 'center', alignItems: 'center', marginBottom: '20%' }]}>
+                  <View style={{ width: actualShelfDisplayWidth, justifyContent: 'center', alignItems: 'center', marginTop: '50%' }}>
                       <Text style={styles.emptyShelfText}>まだ手紙がないみたい…</Text>
                   </View>
                 )}
@@ -736,8 +790,8 @@ export default function App() {
           {/* 手紙の内容を表示するモーダル (カスタム View で) */}
           {!!readingMessage && (
             <Animated.View style={[
-              styles.overlay, // ★ 新しいスタイル (下記参照)
-              { opacity: fadeAnim } // ★ 手紙を読むモーダル専用のアニメーション値
+              styles.overlay, // 新しいスタイル (下記参照)
+              { opacity: fadeAnim } // 手紙を読むモーダル専用のアニメーション値
             ]}>
                <ScrollView
                 contentContainerStyle={{ 
@@ -768,7 +822,7 @@ export default function App() {
 
                   <View style={styles.buttonRowContainer}>
                     <Pressable
-                      style={[styles.button, { backgroundColor: '#AAA' }]} // ★ 以前定義したボタン共通スタイルをベースに
+                      style={[styles.button, { backgroundColor: '#AAA' }]} // 以前定義したボタン共通スタイルをベースに
                       onPress={async () => {
                         const currentMessage = readingMessage;
                         if (readingMessage?.isReceivedMessage && readingMessage.id) {
@@ -857,7 +911,7 @@ export default function App() {
                   fadeAnim.setValue(0); // 手紙を読むモーダルのアニメーション値をリセット
                   fadeIn();             // 手紙を読むモーダルをフェードイン (既存の関数)
 
-                  // ★ ホーム画面の arrivedBottle をクリア (ここで処理するのが確実)
+                  // ホーム画面の arrivedBottle をクリア (ここで処理するのが確実)
                   setArrivedBottle(null);
                   // arrivedBottleOpacityAnim もリセット
                   arrivedBottleOpacityAnim.setValue(0);
@@ -897,6 +951,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 100,
   },
+
+  // 設定モーダル
   settingTitle: {
     fontSize: 24,
     marginBottom: 12,
@@ -904,11 +960,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold'
   },
+  settingsModalContent: { // ★ 設定モーダルのメインコンテンツコンテナ
+    width: '85%',
+    backgroundColor: 'rgb(75, 184, 224)', // 少し明るい半透明の青など
+    padding: 20,
+    borderRadius: 10,
+    elevation: 5, // Androidの影
+    shadowColor: '#000', // iOSの影
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  settingLabel: { // 各設定項目のラベル用スタイル
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 5,
+  },
   modalInput: {
     borderColor: '#ccc',
     backgroundColor: '#fff',
     borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 10,
     padding: 10,
     borderRadius: 5,
   },
@@ -949,7 +1022,7 @@ const styles = StyleSheet.create({
   },
 
   // 執筆モードのスタイル
-  letterNote: { // ★ImageBackground (便箋画像) のスタイル
+  letterNote: { // ImageBackground (便箋画像) のスタイル
     flex: 1,
     // 便箋画像の端から実際の書き込み開始位置までの「余白」
     // これらの値は、お持ちの letter.png のデザインに合わせて調整してください。
@@ -983,7 +1056,7 @@ const styles = StyleSheet.create({
   shelfGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start', // ★ 左詰めにする (または 'space-between' や 'center' でアイテムを中央寄せ)
+    justifyContent: 'flex-start', // 左詰めにする (または 'space-between' や 'center' でアイテムを中央寄せ)
     width: '85%', // shelfBackground の幅に対して、グリッドが占める幅 (例: 85%)
                   // この幅の中に3つの瓶がきれいに収まるように調整します
     // backgroundColor: 'rgba(255,0,0,0.2)', // デバッグ用に背景色をつけて確認すると良い
@@ -1016,10 +1089,10 @@ const styles = StyleSheet.create({
   shelfPage: {
     // width は FlatList の renderItem 内で動的に設定されます (例: { width: shelfContainerWidth })
     height: '100%',           // 親のImageBackgroundの高さに合わせる
-    justifyContent: 'flex-start', // ★★★ グリッドをページの上端から配置する
-    alignItems: 'center',         // ★★★ グリッド自体をページ内で水平中央に配置
-    paddingTop: '9%',               // ★ 棚の画像の上端から最初の瓶までの余白 (お好みで調整)
-    paddingBottom: '6%',            // ★ 棚の画像の下端と最後の瓶またはページインジケータとの余白 (お好みで調整)
+    justifyContent: 'flex-start', // グリッドをページの上端から配置する
+    alignItems: 'center',         // グリッド自体をページ内で水平中央に配置
+    paddingTop: '9%',               // 棚の画像の上端から最初の瓶までの余白 (お好みで調整)
+    paddingBottom: '6%',            // 棚の画像の下端と最後の瓶またはページインジケータとの余白 (お好みで調整)
     // backgroundColor: 'rgba(0,0,255,0.1)', // デバッグ用に一時的に背景色をつけると分かりやすい
   },
   pageIndicatorContainer: {
