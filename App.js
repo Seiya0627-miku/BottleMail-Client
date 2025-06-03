@@ -9,7 +9,7 @@ import * as Crypto from 'expo-crypto';
 
 const windowWidth = Dimensions.get('window').width;
 const ASYNC_STORAGE_MESSAGES_KEY = '@MyApp:messages';
-
+const ASYNC_STORAGE_PREFERENCES_KEY = '@MyApp:userPreferences';
 
 // --- 便箋のサイズ制約 ---
 const MAX_STATIONERY_WIDTH = 300;
@@ -51,13 +51,32 @@ const actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
 
 export default function App() {
   // 設定
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const settingsButtonRotateAnim = useRef(new Animated.Value(0)).current; // 0: 0度, 1: 180度 を表現
   const [userId, setUserId] = useState("unknown-user"); // 初期値は適当な文字列
-  const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempUserId, setTempUserId] = useState(userId);
+  const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempIP, setTempIP] = useState(serverIP);
+  const [preferences, setPreferences] = useState({ emotion: "", custom: "" });
+  const [tempEmotion, setTempEmotion] = useState(preferences.emotion);
+  const [tempCustom, setTempCustom] = useState(preferences); // 設定モーダル内の一時的な値
+
   const [isNewUser, setIsNewUser] = useState(null); // To track if user is new for tutorial
   const [isLoadingApp, setIsLoadingApp] = useState(true);
-  const [settingsVisible, setSettingsVisible] = useState(false);
+
+  useEffect(() => {
+    // settingsVisible の状態に応じて、回転アニメーションを実行
+    Animated.timing(settingsButtonRotateAnim, {
+      toValue: settingsVisible ? 1 : 0, // settingsVisibleがtrueなら1(180度へ)、falseなら0(0度へ)
+      duration: 300, // アニメーション時間 (0.3秒)
+      useNativeDriver: true, // パフォーマンス向上のため
+    }).start();
+  }, [settingsVisible, settingsButtonRotateAnim]);
+
+  const settingsButtonSpin = settingsButtonRotateAnim.interpolate({
+    inputRange: [0, 1], // settingsButtonRotateAnim の値が0から1に変化する間に
+    outputRange: ['0deg', '180deg'], // transformのrotateプロパティは'0deg'から'180deg'に変化
+  });
 
   // 手紙ボックス
   const [boxVisible, setBoxVisible] = useState(false);
@@ -109,16 +128,53 @@ export default function App() {
         return; // Stop initialization if ID generation fails critically
       }
 
-      // 2. ユーザーIDをサーバーで確認
-      if (idForApp && serverIP) {
+      // 2. ユーザーIDと設定をサーバーで確認
+      if (idForApp && !idForApp.startsWith('user-fallback') && !idForApp.startsWith('user-error') && serverIP) {
+        let initialUserPreferences = { emotion: "", custom: "" }; // デフォルト値
+        // まずローカルストレージ (AsyncStorage) から設定を読み込んでUIに反映
+        try {
+          const storedPrefsJson = await AsyncStorage.getItem(`${ASYNC_STORAGE_PREFERENCES_KEY}_${idForApp}`);
+          if (storedPrefsJson) {
+            const parsedPrefs = JSON.parse(storedPrefsJson);
+            // 取得した値がオブジェクトであり、期待するキーを持っているか確認するとより安全
+            if (typeof parsedPrefs === 'object' && parsedPrefs !== null) {
+              initialUserPreferences = {
+                  emotion: parsedPrefs.emotion || "", // フォールバック
+                  custom: parsedPrefs.custom || ""   // フォールバック
+              };
+              console.log("ローカルストレージから受信好み設定をロード:", initialUserPreferences);
+            } else {
+              console.warn("ローカルストレージのpreferencesが期待する形式ではありませんでした。");
+              // initialUserPreferences はデフォルト値のまま
+            }
+          } else {
+            console.log("ローカルストレージに受信好み設定がありません。");
+            // initialUserPreferences はデフォルト値のまま
+          }
+        } catch (e) {
+          console.error("AsyncStorageからの受信好み設定ロードに失敗:", e);
+          // initialUserPreferences はデフォルト値のまま
+        }
+        setPreferences(initialUserPreferences);
+
         try {
           const response = await fetch(`${serverIP}/check_user/${idForApp}`, { method: 'POST' }); // Ensure this matches server endpoint
           if (!response.ok) {
             throw new Error(`Server error: ${response.status}`);
           }
-          const data = await response.json();
-          setIsNewUser(data.is_new_user);
-          console.log(`User status from server for ${idForApp}: New user = ${data.is_new_user}`);
+          const userDataFromServer = await response.json(); // サーバーからのユーザー詳細情報
+          setIsNewUser(userDataFromServer.is_new_user);
+          console.log(`User status for ${idForApp}: New user = ${userDataFromServer.is_new_user}`);
+
+          if (userDataFromServer.details && userDataFromServer.details.preferences) {
+            initialUserPreferences = { 
+              emotion: userDataFromServer.details.preferences.emotion || "",
+              custom: userDataFromServer.details.preferences.custom || ""
+            };
+            console.log("サーバーから受信好み設定をロード:", initialUserPreferences);
+          } else {
+            console.log("サーバーのユーザー情報にpreferencesがありません。");
+          }
           // --- チュートリアル用に手紙一枚書かせる ---
           // if (data.is_new_user) {
           //   // TODO: Trigger tutorial flow
@@ -127,72 +183,73 @@ export default function App() {
           //   // setWritingVisible(true); // Example: Open writing modal for tutorial
           // }
         } catch (e) {
-          console.error("Failed to check user status with server:", e);
+          console.error("ユーザー確認またはサーバーからの設定ロード失敗:", e);
           Alert.alert("サーバー接続エラー", "ユーザー情報の確認に失敗しました。ネットワーク接続を確認してください。");
+
           setIsNewUser(null); // Set to undecided or handle as error
         }
+        setPreferences(initialUserPreferences);
 
         // 3. 手紙ボックスの内容をロード (userIdが確定し、フォールバック/エラーIDでない場合)
         setIsLoadingMessages(true); // 手紙ボックスのローディング開始
-        let loadedMessages = [];
-        let loadedFromServer = false;
+        let localMessagesLoaded = false;
 
-        // (A) まずサーバーから取得を試みる
+        // (A) まずローカルストレージ (AsyncStorage) から手紙を読み込んで表示
+        try {
+          const storedMessagesJson = await AsyncStorage.getItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`);
+          if (storedMessagesJson !== null) {
+            const messagesFromStorage = JSON.parse(storedMessagesJson);
+            setMessages(messagesFromStorage); // ★ まずローカルデータでUIを更新
+            localMessagesLoaded = true;
+            console.log("手紙ボックスをローカルストレージからロードしました。");
+          } else {
+            console.log("ローカルストレージに手紙ボックスデータがありません。");
+            // ローカルにない場合は、一旦空か初期デモデータでUIを更新しておく (サーバー取得待ち)
+            setMessages(initialMessagesData); // または []
+          }
+        } catch (asyncStorageError) {
+          console.error("AsyncStorageからの手紙ボックスロードに失敗:", asyncStorageError);
+          setMessages(initialMessagesData); // エラー時もフォールバック (または [])
+        }
+
+        // (B) 次に、サーバーから最新の手紙リストを取得し、ローカルを更新 (バックグラウンド同期)
+        // この処理はローカルデータの表示後に行われるため、ユーザーはすぐにデータを見れる
         try {
           const letterboxUrl = `${serverIP}/letterbox/${idForApp}`;
-          console.log("サーバーから手紙ボックスのロードを試みます:", letterboxUrl);
+          console.log("サーバーと手紙ボックスの同期を開始します:", letterboxUrl);
           const serverResponse = await fetch(letterboxUrl);
 
           if (serverResponse.ok) {
             const serverData = await serverResponse.json();
-            loadedMessages = serverData;
-            // サーバーから取得成功したら、ローカルストレージも更新
-            await AsyncStorage.setItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`, JSON.stringify(loadedMessages));
-            console.log("手紙ボックスをサーバーからロードし、ローカルに保存しました。");
-            loadedFromServer = true;
+            // ★ サーバーからのデータで messages ステートと AsyncStorage を更新
+            setMessages(serverData);
+            await AsyncStorage.setItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`, JSON.stringify(serverData));
+            console.log("手紙ボックスをサーバーと同期し、ローカルを更新しました。");
           } else {
-            // サーバーからのレスポンスはあるがエラーだった場合 (404 Not Found など)
-            console.warn(`サーバーからの手紙ボックス取得失敗: ${serverResponse.status}, URL: ${letterboxUrl}`);
-            // この場合は、次にローカルストレージからの読み込みを試みる (loadedFromServer は false のまま)
+            // サーバーからのレスポンスはあるがエラーだった場合
+            console.warn(`サーバーとの手紙ボックス同期失敗: ${serverResponse.status}, URL: ${letterboxUrl}`);
+            // この場合、ローカルデータがそのまま使われ続ける (もしあれば)
+            // 必要であればユーザーに通知「最新情報が取得できませんでした」など
+            if (!localMessagesLoaded) { // サーバーも失敗、ローカルもなかった場合
+              Alert.alert("データ取得エラー", "手紙ボックスの情報を取得できませんでした。");
+            }
           }
         } catch (networkError) {
           // fetch自体が失敗した場合 (ネットワーク接続なし、サーバーダウンなど)
-          console.warn("サーバーからの手紙ボックス取得中にネットワークエラー:", networkError.message);
-          // この場合も、次にローカルストレージからの読み込みを試みる (loadedFromServer は false のまま)
-        }
-
-        // (B) サーバーから取得できなかった場合、ローカルストレージから読み込む
-        if (!loadedFromServer) {
-          try {
-            console.log("ローカルストレージから手紙ボックスのロードを試みます。");
-            const storedMessagesJson = await AsyncStorage.getItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`);
-            if (storedMessagesJson !== null) {
-              loadedMessages = JSON.parse(storedMessagesJson);
-              console.log("ローカルストレージから手紙ボックスをロードしました。");
-            } else {
-              console.log("ローカルストレージにも手紙ボックスデータがありません。");
-              // loadedMessages は空のまま (または initialMessagesData を使う)
-            }
-          } catch (asyncStorageError) {
-            console.error("AsyncStorageからの手紙ボックスロードに失敗:", asyncStorageError);
-            // loadedMessages は空のまま (または initialMessagesData を使う)
+          console.warn("サーバーとの手紙ボックス同期中にネットワークエラー:", networkError.message);
+          if (!localMessagesLoaded) { // サーバーも失敗、ローカルもなかった場合
+              Alert.alert("通信エラー", "手紙ボックスの情報を取得できませんでした。ネットワークを確認してください。");
           }
+          // この場合も、ローカルデータがそのまま使われ続ける (もしあれば)
         }
-        
-        // 最終的に取得できたメッセージをセット (何もなければ空配列か初期データ)
-        if (loadedFromServer || (loadedMessages && loadedMessages.length > 0)) {
-          setMessages(initialMessagesData);
-        } else {
-          console.log("利用可能な手紙ボックスデータがないため、初期デモデータ（または空）を使用します。");
-          setMessages(initialMessagesData); // initialMessagesDataが定義されていればそれを使う
-        }
+        setIsLoadingMessages(false); // ★ 手紙ボックス関連のローディング終了
       } else {
-        // 有効なuserIdがない、またはserverIPがない場合はデモデータを表示
-        console.log("有効なuserIdまたはserverIPがないため、デモデータを使用します。");
+        // 有効なユーザーIDがない、またはserverIPがない場合は、初期デモデータを表示
+        console.log("有効なユーザーIDまたはserverIPがないため、手紙ボックスは初期デモデータを使用します。");
         setMessages(initialMessagesData);
+        setIsLoadingMessages(false); // この場合もローディングは終了
       }
-      setIsLoadingMessages(false); // 手紙ボックスのローディング終了
-      setIsLoadingApp(false); // ★ 全ての初期化処理が終わったらローディング終了
+      setIsLoadingApp(false); // 全ての初期化処理が終わったらローディング終了
     };
 
     initializeApp();
@@ -200,16 +257,16 @@ export default function App() {
 
   // --- 手紙受信・開封フロー用 ---
   const [arrivedBottle, setArrivedBottle] = useState(null); // ホームに表示する新しい瓶のデータ (1通)
-  const arrivedBottleOpacityAnim = useRef(new Animated.Value(0)).current; // ★ホームの瓶のフェードイン用
-  const [bottleOpeningOverlayVisible, setBottleOpeningOverlayVisible] = useState(false); // ★瓶開封オーバーレイ表示用
-  const largeBottleSlideAnimY = useRef(new Animated.Value(Dimensions.get('window').height)).current; // ★大きな瓶のスライドイン用 (初期位置は画面下外)
-  const [largeBottleTapCount, setLargeBottleTapCount] = useState(0); // ★大きな瓶のタップ回数)
+  const arrivedBottleOpacityAnim = useRef(new Animated.Value(0)).current; // ホームの瓶のフェードイン用
+  const [bottleOpeningOverlayVisible, setBottleOpeningOverlayVisible] = useState(false); // 瓶開封オーバーレイ表示用
+  const largeBottleSlideAnimY = useRef(new Animated.Value(Dimensions.get('window').height)).current; // 大きな瓶のスライドイン用 (初期位置は画面下外)
+  const [largeBottleTapCount, setLargeBottleTapCount] = useState(0); // 大きな瓶のタップ回数
   const [isUserInCooldown, setIsUserInCooldown] = useState(false);
   const [cooldownEndTime, setCooldownEndTime] = useState(0);
 
   // 手紙の受信
   const fetchNewLetterFromServer = async () => {
-    if (!userId || !serverIP || arrivedBottle) { // ★ arrivedBottle があれば、まだ処理していないので取得しない
+    if (!userId || !serverIP || arrivedBottle) { // arrivedBottle があれば、まだ処理していないので取得しない
       return;
     }
 
@@ -270,7 +327,7 @@ export default function App() {
   const [messageToOpenDetails, setMessageToOpenDetails] = useState(null);
 
   const handleOpenNewBottle = (bottleData) => {
-    setMessageToOpenDetails(bottleData); // ★ 開封対象のメッセージを保持 (既存のステートを活用)
+    setMessageToOpenDetails(bottleData); // 開封対象のメッセージを保持 (既存のステートを活用)
     setLargeBottleTapCount(0);        // 大きな瓶のタップカウントをリセット
 
     // (A) ホーム画面の小さな瓶をフェードアウト
@@ -446,15 +503,73 @@ export default function App() {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [shelfContainerWidth, setShelfContainerWidth] = useState(0); // 棚コンテナの実際の幅
 
-  const saveSettings = () => {
-    setUserId(tempUserId);
-    setServerIP(tempIP);
-    setSettingsVisible(false);
-  };
-  const cancelSettings = () => {
-    setTempUserId(userId); // 元の値に戻す
-    setTempIP(serverIP); // 元の値に戻す
-    setSettingsVisible(false); // ステートは変更しない
+  // settingsVisible が true になったときに tempCustom を現在の preferences で初期化
+  useEffect(() => {
+    if (settingsVisible) {
+      setTempIP(serverIP);
+      setTempEmotion(preferences.emotion || "");
+      setTempCustom(preferences.custom || "");
+    }
+  }, [settingsVisible, serverIP, preferences]); // 依存配列に preferences を追加
+
+  const saveSettings = async () => { // ★ async 関数に変更
+    // 1. まずReactのステートを更新（UI即時反映のため）
+    const updatedPreferencesObject = {
+      emotion: tempEmotion.trim(),
+      custom: tempCustom.trim(),
+    };
+    setPreferences(updatedPreferencesObject);
+    setServerIP(tempIP); // serverIPの更新はそのまま
+    setSettingsVisible(false); // モーダルを閉じる
+
+    let serverSaveOk = false;
+    // 2. サーバーに設定を送信 (有効なuserIdとserverIPがある場合)
+    if (userId && !userId.startsWith('user-fallback') && !userId.startsWith('user-error') && serverIP) {
+      try {
+        const url = `${serverIP}/update_preferences/${userId}`;
+        console.log("サーバーに受信好み設定を送信中:", url);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedPreferencesObject), // Pydanticモデルに合わせて送信
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.status === "preferences_updated") {
+            console.log("サーバーへの設定保存成功:", result.updated_preferences);
+            // サーバーからの最新のpreferencesでローカルステートを更新しても良い(今回は送信したもので確定)
+            // setPreferences(result.updated_preferences);
+            setStatusMessage('✅ 設定を保存しました！');
+            serverSaveOk = true;
+          } else {
+            throw new Error(result.detail || "サーバーでの設定更新応答エラー");
+          }
+        } else {
+          throw new Error(`サーバーエラー (update_preferences): ${response.status}`);
+        }
+      } catch (e) {
+        console.error("サーバーへの設定保存失敗:", e);
+        // サーバー保存失敗のメッセージは、ローカル保存後に設定
+      }
+    }
+
+    // 3. AsyncStorageに設定を保存 (サーバー接続の成否に関わらず実行)
+    try {
+      await AsyncStorage.setItem(`${ASYNC_STORAGE_PREFERENCES_KEY}_${userId}`, JSON.stringify(updatedPreferencesObject));
+      console.log("受信好み設定をAsyncStorageに保存しました:", updatedPreferencesObject);
+      if (serverSaveOk) {
+        // サーバー保存成功のメッセージは上で設定済み
+      } else { // サーバーへの送信を試みたが失敗した場合
+        Alert.alert('同期エラー', '設定はサーバへの同期に失敗しました。ネット接続を確認して再度お試しください。');
+      }
+    } catch (e) {
+      console.error("AsyncStorageへの設定保存失敗:", e);
+      Alert.alert("ローカル保存エラー", "設定のローカル保存中にエラーが発生しました。");
+      if (!serverSaveOk && userId && serverIP) { // サーバーも失敗、ローカルも失敗
+          Alert.alert('エラー', '設定の保存に失敗しました。');
+      }
+    }
   };
 
   const fadeIn = () => {
@@ -486,7 +601,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      {statusMessage ? ( // 「送信成功！」の時だけこれがtrueになる
+      {statusMessage ? (
         <Animated.View style={[
           styles.systemMessageContainer,
           {
@@ -507,7 +622,13 @@ export default function App() {
           {/* 設定ボタン */}
           <View style={{ position: 'absolute', top: 20, right: 20, zIndex: 10 }}>
             <TouchableOpacity onPress={() => setSettingsVisible(true)}>
-              <Image source={require('./assets/setting-button.png')} style={{ width: 80, height: 80 }} />
+              <Animated.Image
+                source={require('./assets/setting-button.png')}
+                style={[
+                  { width: 80, height: 80 }, // 元のスタイル
+                  { transform: [{ rotate: settingsButtonSpin }] } // ★ 回転アニメーションを適用
+                ]}
+              />
             </TouchableOpacity>
           </View>
           {/* 執筆ボタン */}
@@ -531,7 +652,7 @@ export default function App() {
             </TouchableOpacity>
           </View>
 
-          {/* ★★★ 新しく届いた瓶を表示する (1通のみ) ★★★ */}
+          {/* 新しく届いた瓶を表示する (1通のみ) */}
           {arrivedBottle && !bottleOpeningOverlayVisible && !readingMessage && (
             <Animated.View style={[
               styles.newBottlesArea, // このスタイルは瓶を配置するエリア全体を指す
@@ -550,27 +671,53 @@ export default function App() {
           <Modal visible={settingsVisible} animationType="slide" transparent={true}>
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={styles.overlay}>
-                <View style={{width: '85%', backgroundColor: 'rgb(118, 182, 255)', padding: 20, borderRadius: 10}}>
+                <View style={styles.settingsModalContent}>
                   <Text style={styles.settingTitle}>設定</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="ユーザーID"
-                    value={tempUserId}
-                    onChangeText={setTempUserId}
-                  />
+
+                  {/* --- ユーザーID (表示のみ) --- */}
+                  <Text style={styles.settingLabel}>ユーザーID:</Text>
+                  <Text style={[styles.settingLabel, {color: "rgb(46, 85, 122)"}]}>{userId}</Text>
+
+                  {/* --- サーバーIPアドレス --- */}
+                  <Text style={styles.settingLabel}>サーバーアドレス:</Text>
                   <TextInput
                     style={styles.modalInput}
                     placeholder="サーバーIPアドレス"
                     value={tempIP}
                     onChangeText={setTempIP}
                   />
+
+                  {/* --- 受信好み設定: emotion --- */}
+                  <Text style={styles.settingLabel}>今の気持ち (任意):</Text>
+                  <TextInput
+                    style={styles.modalInput} // 通常の入力欄スタイル
+                    placeholder="例: 嬉しい、穏やか、考え事"
+                    value={tempEmotion}       // ★ tempEmotion を使用
+                    onChangeText={setTempEmotion} // ★ setTempEmotion を使用
+                    maxLength={20} // 例: 20文字まで
+                  />
+
+                  {/* --- 受信好み設定 --- */}
+                  <Text style={styles.settingLabel}>受信好み設定 (任意):</Text>
+                  <TextInput
+                    style={styles.modalInput} // ★ 複数行用スタイルを追加
+                    placeholder="例: 明るい話題、短い手紙が好き。詩や物語も歓迎...（100文字まで）"
+                    value={tempCustom} // ★ 新しいステート変数 (下記参照)
+                    onChangeText={setTempCustom} // ★ 新しいステート更新関数 (下記参照)
+                    multiline={true}
+                    numberOfLines={3} // 初期表示の行数（実際の表示は内容による）
+                    maxLength={100} // 最大100文字
+                    textAlignVertical="top" // Androidで複数行入力のカーソル位置を上にする
+                  />
+
+                  {/* --- 保存ボタンとキャンセルボタン --- */}
                   <View style={styles.buttonRowContainer}>
                     <Pressable style={styles.buttonInRow} onPress={saveSettings}>
                       <Text style={styles.buttonText}>保存</Text>
                     </Pressable>
                     <Pressable
                       style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}
-                      onPress={cancelSettings}
+                      onPress={() => setSettingsVisible(false)}
                     >
                       <Text style={styles.buttonText}>キャンセル</Text>
                     </Pressable>
@@ -709,7 +856,7 @@ export default function App() {
 
                 {/* メッセージが1件もない場合の表示 (任意) */}
                 {shelfContainerWidth > 0 && paginatedMessages.length === 0 && (
-                  <View style={[styles.shelfPage, { width: actualShelfDisplayWidth, justifyContent: 'center', alignItems: 'center', marginBottom: '20%' }]}>
+                  <View style={{ width: actualShelfDisplayWidth, justifyContent: 'center', alignItems: 'center', marginTop: '50%' }}>
                       <Text style={styles.emptyShelfText}>まだ手紙がないみたい…</Text>
                   </View>
                 )}
@@ -736,8 +883,8 @@ export default function App() {
           {/* 手紙の内容を表示するモーダル (カスタム View で) */}
           {!!readingMessage && (
             <Animated.View style={[
-              styles.overlay, // ★ 新しいスタイル (下記参照)
-              { opacity: fadeAnim } // ★ 手紙を読むモーダル専用のアニメーション値
+              styles.overlay, // 新しいスタイル (下記参照)
+              { opacity: fadeAnim } // 手紙を読むモーダル専用のアニメーション値
             ]}>
                <ScrollView
                 contentContainerStyle={{ 
@@ -768,7 +915,7 @@ export default function App() {
 
                   <View style={styles.buttonRowContainer}>
                     <Pressable
-                      style={[styles.button, { backgroundColor: '#AAA' }]} // ★ 以前定義したボタン共通スタイルをベースに
+                      style={[styles.button, { backgroundColor: '#AAA' }]} // 以前定義したボタン共通スタイルをベースに
                       onPress={async () => {
                         const currentMessage = readingMessage;
                         if (readingMessage?.isReceivedMessage && readingMessage.id) {
@@ -857,7 +1004,7 @@ export default function App() {
                   fadeAnim.setValue(0); // 手紙を読むモーダルのアニメーション値をリセット
                   fadeIn();             // 手紙を読むモーダルをフェードイン (既存の関数)
 
-                  // ★ ホーム画面の arrivedBottle をクリア (ここで処理するのが確実)
+                  // ホーム画面の arrivedBottle をクリア (ここで処理するのが確実)
                   setArrivedBottle(null);
                   // arrivedBottleOpacityAnim もリセット
                   arrivedBottleOpacityAnim.setValue(0);
@@ -897,6 +1044,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 100,
   },
+
+  // 設定モーダル
   settingTitle: {
     fontSize: 24,
     marginBottom: 12,
@@ -904,11 +1053,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold'
   },
+  settingsModalContent: { // ★ 設定モーダルのメインコンテンツコンテナ
+    width: '85%',
+    backgroundColor: 'rgb(75, 184, 224)', // 少し明るい半透明の青など
+    padding: 20,
+    borderRadius: 10,
+    elevation: 5, // Androidの影
+    shadowColor: '#000', // iOSの影
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  settingLabel: { // 各設定項目のラベル用スタイル
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 5,
+  },
   modalInput: {
     borderColor: '#ccc',
     backgroundColor: '#fff',
     borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 10,
     padding: 10,
     borderRadius: 5,
   },
@@ -949,7 +1115,7 @@ const styles = StyleSheet.create({
   },
 
   // 執筆モードのスタイル
-  letterNote: { // ★ImageBackground (便箋画像) のスタイル
+  letterNote: { // ImageBackground (便箋画像) のスタイル
     flex: 1,
     // 便箋画像の端から実際の書き込み開始位置までの「余白」
     // これらの値は、お持ちの letter.png のデザインに合わせて調整してください。
@@ -983,7 +1149,7 @@ const styles = StyleSheet.create({
   shelfGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start', // ★ 左詰めにする (または 'space-between' や 'center' でアイテムを中央寄せ)
+    justifyContent: 'flex-start', // 左詰めにする (または 'space-between' や 'center' でアイテムを中央寄せ)
     width: '85%', // shelfBackground の幅に対して、グリッドが占める幅 (例: 85%)
                   // この幅の中に3つの瓶がきれいに収まるように調整します
     // backgroundColor: 'rgba(255,0,0,0.2)', // デバッグ用に背景色をつけて確認すると良い
@@ -1016,10 +1182,10 @@ const styles = StyleSheet.create({
   shelfPage: {
     // width は FlatList の renderItem 内で動的に設定されます (例: { width: shelfContainerWidth })
     height: '100%',           // 親のImageBackgroundの高さに合わせる
-    justifyContent: 'flex-start', // ★★★ グリッドをページの上端から配置する
-    alignItems: 'center',         // ★★★ グリッド自体をページ内で水平中央に配置
-    paddingTop: '9%',               // ★ 棚の画像の上端から最初の瓶までの余白 (お好みで調整)
-    paddingBottom: '6%',            // ★ 棚の画像の下端と最後の瓶またはページインジケータとの余白 (お好みで調整)
+    justifyContent: 'flex-start', // グリッドをページの上端から配置する
+    alignItems: 'center',         // グリッド自体をページ内で水平中央に配置
+    paddingTop: '9%',               // 棚の画像の上端から最初の瓶までの余白 (お好みで調整)
+    paddingBottom: '6%',            // 棚の画像の下端と最後の瓶またはページインジケータとの余白 (お好みで調整)
     // backgroundColor: 'rgba(0,0,255,0.1)', // デバッグ用に一時的に背景色をつけると分かりやすい
   },
   pageIndicatorContainer: {
