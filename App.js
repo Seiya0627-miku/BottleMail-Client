@@ -167,13 +167,20 @@ export default function App() {
           console.log(`User status for ${idForApp}: New user = ${userDataFromServer.is_new_user}`);
 
           if (userDataFromServer.details && userDataFromServer.details.preferences) {
-            initialUserPreferences = { 
-              emotion: userDataFromServer.details.preferences.emotion || "",
-              custom: userDataFromServer.details.preferences.custom || ""
+            const serverPrefs = {
+                emotion: userDataFromServer.details.preferences.emotion || "",
+                custom: userDataFromServer.details.preferences.custom || ""
             };
+            setPreferences(serverPrefs); // ★ サーバーデータでUIを上書き更新
+
+            await AsyncStorage.setItem(`<span class="math-inline">\{ASYNC\_STORAGE\_PREFERENCES\_KEY\}\_</span>{idForApp}`, JSON.stringify(serverPrefs));
             console.log("サーバーから受信好み設定をロード:", initialUserPreferences);
           } else {
             console.log("サーバーのユーザー情報にpreferencesがありません。");
+            // ローカルにもサーバーにもない新規ユーザーの場合、デフォルト値をローカルに保存
+            if (currentPreferences.emotion === "" && currentPreferences.custom === "" && !(await AsyncStorage.getItem(`<span class="math-inline">\{ASYNC\_STORAGE\_PREFERENCES\_KEY\}\_</span>{idForApp}`))) {
+                await AsyncStorage.setItem(`<span class="math-inline">\{ASYNC\_STORAGE\_PREFERENCES\_KEY\}\_</span>{idForApp}`, JSON.stringify(currentPreferences));
+            }
           }
           // --- チュートリアル用に手紙一枚書かせる ---
           // if (data.is_new_user) {
@@ -188,7 +195,6 @@ export default function App() {
 
           setIsNewUser(null); // Set to undecided or handle as error
         }
-        setPreferences(initialUserPreferences);
 
         // 3. 手紙ボックスの内容をロード (userIdが確定し、フォールバック/エラーIDでない場合)
         setIsLoadingMessages(true); // 手紙ボックスのローディング開始
@@ -669,62 +675,67 @@ export default function App() {
 
           {/* 設定モーダル */}
           <Modal visible={settingsVisible} animationType="slide" transparent={true}>
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-              <View style={styles.overlay}>
-                <View style={styles.settingsModalContent}>
-                  <Text style={styles.settingTitle}>設定</Text>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+              style={{ flex: 1 }} // KeyboardAvoidingView 自体もflex:1でスペースを取る
+              keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0} // ヘッダーなどがあればオフセット調整
+            >
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.overlay}>
+                  <View style={styles.settingsModalContent}>
+                    <Text style={styles.settingTitle}>設定</Text>
+                    {/* --- ユーザーID (表示のみ) --- */}
+                    <Text style={styles.settingLabel}>ユーザーID:</Text>
+                    <Text style={[styles.settingLabel, {color: "rgb(46, 85, 122)"}]}>{userId}</Text>
 
-                  {/* --- ユーザーID (表示のみ) --- */}
-                  <Text style={styles.settingLabel}>ユーザーID:</Text>
-                  <Text style={[styles.settingLabel, {color: "rgb(46, 85, 122)"}]}>{userId}</Text>
+                    {/* --- サーバーIPアドレス --- */}
+                    <Text style={styles.settingLabel}>サーバーアドレス:</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="サーバーIPアドレス"
+                      value={tempIP}
+                      onChangeText={setTempIP}
+                    />
 
-                  {/* --- サーバーIPアドレス --- */}
-                  <Text style={styles.settingLabel}>サーバーアドレス:</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="サーバーIPアドレス"
-                    value={tempIP}
-                    onChangeText={setTempIP}
-                  />
+                    {/* --- 受信好み設定: emotion --- */}
+                    <Text style={styles.settingLabel}>今の気持ち (任意):</Text>
+                    <TextInput
+                      style={styles.modalInput} // 通常の入力欄スタイル
+                      placeholder="例: 嬉しい、穏やか、考え事"
+                      value={tempEmotion}       // ★ tempEmotion を使用
+                      onChangeText={setTempEmotion} // ★ setTempEmotion を使用
+                      maxLength={20} // 例: 20文字まで
+                    />
 
-                  {/* --- 受信好み設定: emotion --- */}
-                  <Text style={styles.settingLabel}>今の気持ち (任意):</Text>
-                  <TextInput
-                    style={styles.modalInput} // 通常の入力欄スタイル
-                    placeholder="例: 嬉しい、穏やか、考え事"
-                    value={tempEmotion}       // ★ tempEmotion を使用
-                    onChangeText={setTempEmotion} // ★ setTempEmotion を使用
-                    maxLength={20} // 例: 20文字まで
-                  />
+                    {/* --- 受信好み設定 --- */}
+                    <Text style={styles.settingLabel}>受信好み設定 (任意):</Text>
+                    <TextInput
+                      style={styles.modalInput} // ★ 複数行用スタイルを追加
+                      placeholder="例: 明るい話題、短い手紙が好き。詩や物語も歓迎...（100文字まで）"
+                      value={tempCustom} // ★ 新しいステート変数 (下記参照)
+                      onChangeText={setTempCustom} // ★ 新しいステート更新関数 (下記参照)
+                      multiline={true}
+                      numberOfLines={3} // 初期表示の行数（実際の表示は内容による）
+                      maxLength={100} // 最大100文字
+                      textAlignVertical="top" // Androidで複数行入力のカーソル位置を上にする
+                    />
 
-                  {/* --- 受信好み設定 --- */}
-                  <Text style={styles.settingLabel}>受信好み設定 (任意):</Text>
-                  <TextInput
-                    style={styles.modalInput} // ★ 複数行用スタイルを追加
-                    placeholder="例: 明るい話題、短い手紙が好き。詩や物語も歓迎...（100文字まで）"
-                    value={tempCustom} // ★ 新しいステート変数 (下記参照)
-                    onChangeText={setTempCustom} // ★ 新しいステート更新関数 (下記参照)
-                    multiline={true}
-                    numberOfLines={3} // 初期表示の行数（実際の表示は内容による）
-                    maxLength={100} // 最大100文字
-                    textAlignVertical="top" // Androidで複数行入力のカーソル位置を上にする
-                  />
-
-                  {/* --- 保存ボタンとキャンセルボタン --- */}
-                  <View style={styles.buttonRowContainer}>
-                    <Pressable style={styles.buttonInRow} onPress={saveSettings}>
-                      <Text style={styles.buttonText}>保存</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}
-                      onPress={() => setSettingsVisible(false)}
-                    >
-                      <Text style={styles.buttonText}>キャンセル</Text>
-                    </Pressable>
+                    {/* --- 保存ボタンとキャンセルボタン --- */}
+                    <View style={styles.buttonRowContainer}>
+                      <Pressable style={styles.buttonInRow} onPress={saveSettings}>
+                        <Text style={styles.buttonText}>保存</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}
+                        onPress={() => setSettingsVisible(false)}
+                      >
+                        <Text style={styles.buttonText}>キャンセル</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 </View>
-              </View>
-            </TouchableWithoutFeedback>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </Modal>
 
           {/* 執筆モーダル */}
@@ -732,7 +743,7 @@ export default function App() {
             <KeyboardAvoidingView
               style={{ flex: 1 }}
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              keyboardVerticalOffset={60}
+              keyboardVerticalOffset={0}
             >
               <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <View style={styles.overlay}>
@@ -1034,11 +1045,6 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
