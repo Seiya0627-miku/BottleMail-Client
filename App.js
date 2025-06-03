@@ -9,7 +9,7 @@ import * as Crypto from 'expo-crypto';
 
 const windowWidth = Dimensions.get('window').width;
 const ASYNC_STORAGE_MESSAGES_KEY = '@MyApp:messages';
-
+const ASYNC_STORAGE_PREFERENCES_KEY = '@MyApp:userPreferences';
 
 // --- 便箋のサイズ制約 ---
 const MAX_STATIONERY_WIDTH = 300;
@@ -57,8 +57,9 @@ export default function App() {
   const [tempUserId, setTempUserId] = useState(userId);
   const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
   const [tempIP, setTempIP] = useState(serverIP);
-  const [preferences, setPreferences] = useState(''); // 実際に保存される設定
-  const [tempPreferences, setTempPreferences] = useState(preferences); // 設定モーダル内の一時的な値
+  const [preferences, setPreferences] = useState({ emotion: "", custom: "" });
+  const [tempEmotion, setTempEmotion] = useState(preferences.emotion);
+  const [tempCustom, setTempCustom] = useState(preferences); // 設定モーダル内の一時的な値
 
   const [isNewUser, setIsNewUser] = useState(null); // To track if user is new for tutorial
   const [isLoadingApp, setIsLoadingApp] = useState(true);
@@ -127,16 +128,53 @@ export default function App() {
         return; // Stop initialization if ID generation fails critically
       }
 
-      // 2. ユーザーIDをサーバーで確認
-      if (idForApp && serverIP) {
+      // 2. ユーザーIDと設定をサーバーで確認
+      if (idForApp && !idForApp.startsWith('user-fallback') && !idForApp.startsWith('user-error') && serverIP) {
+        let initialUserPreferences = { emotion: "", custom: "" }; // デフォルト値
+        // まずローカルストレージ (AsyncStorage) から設定を読み込んでUIに反映
+        try {
+          const storedPrefsJson = await AsyncStorage.getItem(`${ASYNC_STORAGE_PREFERENCES_KEY}_${idForApp}`);
+          if (storedPrefsJson) {
+            const parsedPrefs = JSON.parse(storedPrefsJson);
+            // 取得した値がオブジェクトであり、期待するキーを持っているか確認するとより安全
+            if (typeof parsedPrefs === 'object' && parsedPrefs !== null) {
+              initialUserPreferences = {
+                  emotion: parsedPrefs.emotion || "", // フォールバック
+                  custom: parsedPrefs.custom || ""   // フォールバック
+              };
+              console.log("ローカルストレージから受信好み設定をロード:", initialUserPreferences);
+            } else {
+              console.warn("ローカルストレージのpreferencesが期待する形式ではありませんでした。");
+              // initialUserPreferences はデフォルト値のまま
+            }
+          } else {
+            console.log("ローカルストレージに受信好み設定がありません。");
+            // initialUserPreferences はデフォルト値のまま
+          }
+        } catch (e) {
+          console.error("AsyncStorageからの受信好み設定ロードに失敗:", e);
+          // initialUserPreferences はデフォルト値のまま
+        }
+        setPreferences(initialUserPreferences);
+
         try {
           const response = await fetch(`${serverIP}/check_user/${idForApp}`, { method: 'POST' }); // Ensure this matches server endpoint
           if (!response.ok) {
             throw new Error(`Server error: ${response.status}`);
           }
-          const data = await response.json();
-          setIsNewUser(data.is_new_user);
-          console.log(`User status from server for ${idForApp}: New user = ${data.is_new_user}`);
+          const userDataFromServer = await response.json(); // サーバーからのユーザー詳細情報
+          setIsNewUser(userDataFromServer.is_new_user);
+          console.log(`User status for ${idForApp}: New user = ${userDataFromServer.is_new_user}`);
+
+          if (userDataFromServer.details && userDataFromServer.details.preferences) {
+            initialUserPreferences = { 
+              emotion: userDataFromServer.details.preferences.emotion || "",
+              custom: userDataFromServer.details.preferences.custom || ""
+            };
+            console.log("サーバーから受信好み設定をロード:", initialUserPreferences);
+          } else {
+            console.log("サーバーのユーザー情報にpreferencesがありません。");
+          }
           // --- チュートリアル用に手紙一枚書かせる ---
           // if (data.is_new_user) {
           //   // TODO: Trigger tutorial flow
@@ -145,71 +183,72 @@ export default function App() {
           //   // setWritingVisible(true); // Example: Open writing modal for tutorial
           // }
         } catch (e) {
-          console.error("Failed to check user status with server:", e);
+          console.error("ユーザー確認またはサーバーからの設定ロード失敗:", e);
           Alert.alert("サーバー接続エラー", "ユーザー情報の確認に失敗しました。ネットワーク接続を確認してください。");
+
           setIsNewUser(null); // Set to undecided or handle as error
         }
+        setPreferences(initialUserPreferences);
 
         // 3. 手紙ボックスの内容をロード (userIdが確定し、フォールバック/エラーIDでない場合)
         setIsLoadingMessages(true); // 手紙ボックスのローディング開始
-        let loadedMessages = [];
-        let loadedFromServer = false;
+        let localMessagesLoaded = false;
 
-        // (A) まずサーバーから取得を試みる
+        // (A) まずローカルストレージ (AsyncStorage) から手紙を読み込んで表示
+        try {
+          const storedMessagesJson = await AsyncStorage.getItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`);
+          if (storedMessagesJson !== null) {
+            const messagesFromStorage = JSON.parse(storedMessagesJson);
+            setMessages(messagesFromStorage); // ★ まずローカルデータでUIを更新
+            localMessagesLoaded = true;
+            console.log("手紙ボックスをローカルストレージからロードしました。");
+          } else {
+            console.log("ローカルストレージに手紙ボックスデータがありません。");
+            // ローカルにない場合は、一旦空か初期デモデータでUIを更新しておく (サーバー取得待ち)
+            setMessages(initialMessagesData); // または []
+          }
+        } catch (asyncStorageError) {
+          console.error("AsyncStorageからの手紙ボックスロードに失敗:", asyncStorageError);
+          setMessages(initialMessagesData); // エラー時もフォールバック (または [])
+        }
+
+        // (B) 次に、サーバーから最新の手紙リストを取得し、ローカルを更新 (バックグラウンド同期)
+        // この処理はローカルデータの表示後に行われるため、ユーザーはすぐにデータを見れる
         try {
           const letterboxUrl = `${serverIP}/letterbox/${idForApp}`;
-          console.log("サーバーから手紙ボックスのロードを試みます:", letterboxUrl);
+          console.log("サーバーと手紙ボックスの同期を開始します:", letterboxUrl);
           const serverResponse = await fetch(letterboxUrl);
 
           if (serverResponse.ok) {
             const serverData = await serverResponse.json();
-            loadedMessages = serverData;
-            // サーバーから取得成功したら、ローカルストレージも更新
-            await AsyncStorage.setItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`, JSON.stringify(loadedMessages));
-            console.log("手紙ボックスをサーバーからロードし、ローカルに保存しました。");
-            loadedFromServer = true;
+            // ★ サーバーからのデータで messages ステートと AsyncStorage を更新
+            setMessages(serverData);
+            await AsyncStorage.setItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`, JSON.stringify(serverData));
+            console.log("手紙ボックスをサーバーと同期し、ローカルを更新しました。");
           } else {
-            // サーバーからのレスポンスはあるがエラーだった場合 (404 Not Found など)
-            console.warn(`サーバーからの手紙ボックス取得失敗: ${serverResponse.status}, URL: ${letterboxUrl}`);
-            // この場合は、次にローカルストレージからの読み込みを試みる (loadedFromServer は false のまま)
+            // サーバーからのレスポンスはあるがエラーだった場合
+            console.warn(`サーバーとの手紙ボックス同期失敗: ${serverResponse.status}, URL: ${letterboxUrl}`);
+            // この場合、ローカルデータがそのまま使われ続ける (もしあれば)
+            // 必要であればユーザーに通知「最新情報が取得できませんでした」など
+            if (!localMessagesLoaded) { // サーバーも失敗、ローカルもなかった場合
+              Alert.alert("データ取得エラー", "手紙ボックスの情報を取得できませんでした。");
+            }
           }
         } catch (networkError) {
           // fetch自体が失敗した場合 (ネットワーク接続なし、サーバーダウンなど)
-          console.warn("サーバーからの手紙ボックス取得中にネットワークエラー:", networkError.message);
-          // この場合も、次にローカルストレージからの読み込みを試みる (loadedFromServer は false のまま)
-        }
-
-        // (B) サーバーから取得できなかった場合、ローカルストレージから読み込む
-        if (!loadedFromServer) {
-          try {
-            console.log("ローカルストレージから手紙ボックスのロードを試みます。");
-            const storedMessagesJson = await AsyncStorage.getItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${idForApp}`);
-            if (storedMessagesJson !== null) {
-              loadedMessages = JSON.parse(storedMessagesJson);
-              console.log("ローカルストレージから手紙ボックスをロードしました。");
-            } else {
-              console.log("ローカルストレージにも手紙ボックスデータがありません。");
-              // loadedMessages は空のまま (または initialMessagesData を使う)
-            }
-          } catch (asyncStorageError) {
-            console.error("AsyncStorageからの手紙ボックスロードに失敗:", asyncStorageError);
-            // loadedMessages は空のまま (または initialMessagesData を使う)
+          console.warn("サーバーとの手紙ボックス同期中にネットワークエラー:", networkError.message);
+          if (!localMessagesLoaded) { // サーバーも失敗、ローカルもなかった場合
+              Alert.alert("通信エラー", "手紙ボックスの情報を取得できませんでした。ネットワークを確認してください。");
           }
+          // この場合も、ローカルデータがそのまま使われ続ける (もしあれば)
         }
-        
-        // 最終的に取得できたメッセージをセット (何もなければ空配列か初期データ)
-        if (loadedFromServer || (loadedMessages && loadedMessages.length > 0)) {
-          setMessages(loadedMessages);
-        } else {
-          console.log("利用可能な手紙ボックスデータがないため、初期デモデータ（または空）を使用します。");
-          setMessages(initialMessagesData); // initialMessagesDataが定義されていればそれを使う
-        }
+        setIsLoadingMessages(false); // ★ 手紙ボックス関連のローディング終了
       } else {
-        // 有効なuserIdがない、またはserverIPがない場合はデモデータを表示
-        console.log("有効なuserIdまたはserverIPがないため、デモデータを使用します。");
+        // 有効なユーザーIDがない、またはserverIPがない場合は、初期デモデータを表示
+        console.log("有効なユーザーIDまたはserverIPがないため、手紙ボックスは初期デモデータを使用します。");
         setMessages(initialMessagesData);
+        setIsLoadingMessages(false); // この場合もローディングは終了
       }
-      setIsLoadingMessages(false); // 手紙ボックスのローディング終了
       setIsLoadingApp(false); // 全ての初期化処理が終わったらローディング終了
     };
 
@@ -464,29 +503,73 @@ export default function App() {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [shelfContainerWidth, setShelfContainerWidth] = useState(0); // 棚コンテナの実際の幅
 
-  // settingsVisible が true になったときに tempPreferences を現在の preferences で初期化
+  // settingsVisible が true になったときに tempCustom を現在の preferences で初期化
   useEffect(() => {
     if (settingsVisible) {
       setTempIP(serverIP);
-      setTempPreferences(preferences); // ★ 現在の設定を一時変数にコピー
+      setTempEmotion(preferences.emotion || "");
+      setTempCustom(preferences.custom || "");
     }
-  }, [settingsVisible, userId, serverIP, preferences]); // 依存配列に preferences を追加
+  }, [settingsVisible, serverIP, preferences]); // 依存配列に preferences を追加
 
-  const saveSettings = () => {
-    setServerIP(tempIP);
-    setPreferences(tempPreferences);
-    setSettingsVisible(false);
-    // TODO: 後で preferences をサーバーに送信する処理を追加
-    console.log("保存された受信好み:", tempPreferences);
+  const saveSettings = async () => { // ★ async 関数に変更
+    // 1. まずReactのステートを更新（UI即時反映のため）
+    const updatedPreferencesObject = {
+      emotion: tempEmotion.trim(),
+      custom: tempCustom.trim(),
+    };
+    setPreferences(updatedPreferencesObject);
+    setServerIP(tempIP); // serverIPの更新はそのまま
+    setSettingsVisible(false); // モーダルを閉じる
 
-    setStatusMessage('✅ 設定を保存しました！');
-    console.log("保存されたサーバーIP:", tempIP);
-    console.log("保存された受信好み:", tempPreferences);
-  };
-  const cancelSettings = () => {
-    setTempIP(serverIP); // 元の値に戻す
-    setTempPreferences(preferences); // 元の値に戻す
-    setSettingsVisible(false); // ステートは変更しない
+    let serverSaveOk = false;
+    // 2. サーバーに設定を送信 (有効なuserIdとserverIPがある場合)
+    if (userId && !userId.startsWith('user-fallback') && !userId.startsWith('user-error') && serverIP) {
+      try {
+        const url = `${serverIP}/update_preferences/${userId}`;
+        console.log("サーバーに受信好み設定を送信中:", url);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedPreferencesObject), // Pydanticモデルに合わせて送信
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.status === "preferences_updated") {
+            console.log("サーバーへの設定保存成功:", result.updated_preferences);
+            // サーバーからの最新のpreferencesでローカルステートを更新しても良い(今回は送信したもので確定)
+            // setPreferences(result.updated_preferences);
+            setStatusMessage('✅ 設定を保存しました！');
+            serverSaveOk = true;
+          } else {
+            throw new Error(result.detail || "サーバーでの設定更新応答エラー");
+          }
+        } else {
+          throw new Error(`サーバーエラー (update_preferences): ${response.status}`);
+        }
+      } catch (e) {
+        console.error("サーバーへの設定保存失敗:", e);
+        // サーバー保存失敗のメッセージは、ローカル保存後に設定
+      }
+    }
+
+    // 3. AsyncStorageに設定を保存 (サーバー接続の成否に関わらず実行)
+    try {
+      await AsyncStorage.setItem(`${ASYNC_STORAGE_PREFERENCES_KEY}_${userId}`, JSON.stringify(updatedPreferencesObject));
+      console.log("受信好み設定をAsyncStorageに保存しました:", updatedPreferencesObject);
+      if (serverSaveOk) {
+        // サーバー保存成功のメッセージは上で設定済み
+      } else { // サーバーへの送信を試みたが失敗した場合
+        Alert.alert('同期エラー', '設定はサーバへの同期に失敗しました。ネット接続を確認して再度お試しください。');
+      }
+    } catch (e) {
+      console.error("AsyncStorageへの設定保存失敗:", e);
+      Alert.alert("ローカル保存エラー", "設定のローカル保存中にエラーが発生しました。");
+      if (!serverSaveOk && userId && serverIP) { // サーバーも失敗、ローカルも失敗
+          Alert.alert('エラー', '設定の保存に失敗しました。');
+      }
+    }
   };
 
   const fadeIn = () => {
@@ -604,13 +687,23 @@ export default function App() {
                     onChangeText={setTempIP}
                   />
 
-                  {/* --- 受信好み設定 (新規追加) --- */}
+                  {/* --- 受信好み設定: emotion --- */}
+                  <Text style={styles.settingLabel}>今の気持ち (任意):</Text>
+                  <TextInput
+                    style={styles.modalInput} // 通常の入力欄スタイル
+                    placeholder="例: 嬉しい、穏やか、考え事"
+                    value={tempEmotion}       // ★ tempEmotion を使用
+                    onChangeText={setTempEmotion} // ★ setTempEmotion を使用
+                    maxLength={20} // 例: 20文字まで
+                  />
+
+                  {/* --- 受信好み設定 --- */}
                   <Text style={styles.settingLabel}>受信好み設定 (任意):</Text>
                   <TextInput
                     style={styles.modalInput} // ★ 複数行用スタイルを追加
                     placeholder="例: 明るい話題、短い手紙が好き。詩や物語も歓迎...（100文字まで）"
-                    value={tempPreferences} // ★ 新しいステート変数 (下記参照)
-                    onChangeText={setTempPreferences} // ★ 新しいステート更新関数 (下記参照)
+                    value={tempCustom} // ★ 新しいステート変数 (下記参照)
+                    onChangeText={setTempCustom} // ★ 新しいステート更新関数 (下記参照)
                     multiline={true}
                     numberOfLines={3} // 初期表示の行数（実際の表示は内容による）
                     maxLength={100} // 最大100文字
@@ -624,7 +717,7 @@ export default function App() {
                     </Pressable>
                     <Pressable
                       style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}
-                      onPress={cancelSettings}
+                      onPress={() => setSettingsVisible(false)}
                     >
                       <Text style={styles.buttonText}>キャンセル</Text>
                     </Pressable>
