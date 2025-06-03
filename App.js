@@ -46,6 +46,7 @@ export default function App() {
   // アプリ起動時の処理
   useEffect(() => {
     const initializeApp = async () => {
+      setIsLoadingUserId(true);
       let idForApp = null;
       let fetchedShortId = null; // To store the "user-xxxx" formatted ID
 
@@ -115,6 +116,103 @@ export default function App() {
     initializeApp();
   }, [serverIP]); // Re-run if serverIP changes, userId is now set within this effect
 
+  // --- 手紙受信・開封フロー用 ---
+  const [arrivedBottle, setArrivedBottle] = useState(null); // ホームに表示する新しい瓶のデータ (1通)
+  const arrivedBottleOpacityAnim = useRef(new Animated.Value(0)).current; // ★ホームの瓶のフェードイン用
+  const [bottleOpeningOverlayVisible, setBottleOpeningOverlayVisible] = useState(false); // ★瓶開封オーバーレイ表示用
+  const largeBottleSlideAnimY = useRef(new Animated.Value(Dimensions.get('window').height)).current; // ★大きな瓶のスライドイン用 (初期位置は画面下外)
+  const [largeBottleTapCount, setLargeBottleTapCount] = useState(0); // ★大きな瓶のタップ回数)
+  const [isUserInCooldown, setIsUserInCooldown] = useState(false);
+  const [cooldownEndTime, setCooldownEndTime] = useState(0);
+
+  // 手紙の受信
+  const fetchNewLetterFromServer = async () => {
+    if (!userId || !serverIP || arrivedBottle) { // ★ arrivedBottle があれば、まだ処理していないので取得しない
+      return;
+    }
+
+    try {
+      const currentServerIP = tempIP || serverIP;
+      const url = `${currentServerIP}/receive_unopened/${userId}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error(`手紙の受信エラー (${userId}): ${response.status}`);
+        setIsUserInCooldown(false); // エラー時はクールダウン状態不明なので一旦解除
+        return;
+      }
+      const data = await response.json();
+
+      if (data && data.status === "new_letter_available" && data.id) {
+        console.log('新しい手紙の通知を受信:', data.id, data.title);
+        setArrivedBottle(data); // 届いた瓶の情報をセット (これがホーム画面の瓶になる)
+        Animated.timing(arrivedBottleOpacityAnim, {
+          toValue: 1,
+          duration: 500, // 0.5秒でフェードイン
+          useNativeDriver: true,
+        }).start();
+        setIsUserInCooldown(false);
+        setCooldownEndTime(0);
+      } else if (data && data.status === "cooldown") {
+        console.log(`クールダウン中です。残り: ${data.cooldown_remaining_seconds}秒`);
+        setIsUserInCooldown(true);
+        setCooldownEndTime(Date.now() + data.cooldown_remaining_seconds * 1000);
+      } else if (data && data.status === "no_new_letters") {
+        // console.log(`新しい手紙はありませんでした (${userId})`);
+        setIsUserInCooldown(false);
+        setCooldownEndTime(0);
+      } else {
+        // サーバーからの予期せぬレスポンスや、stale_letter_removed の場合など
+        setIsUserInCooldown(false);
+      }
+    } catch (error) {
+      console.error(`手紙の受信に失敗しました (${userId}):`, error);
+      setIsUserInCooldown(false);
+    }
+  };
+
+  // ポーリング
+  const POLLING_INTERVAL = 20000; // 20秒ごと (お好みで調整)
+  useEffect(() => {
+    if (userId && userId !== 'unknown-user' && userId !== '' && serverIP && !arrivedBottle) {
+      console.log(`ポーリングを開始します (ユーザーID: ${userId})`);
+      fetchNewLetterFromServer();
+      const intervalId = setInterval(fetchNewLetterFromServer, POLLING_INTERVAL);
+      return () => {
+        console.log(`ポーリングを停止します (ユーザーID: ${userId})`);
+        clearInterval(intervalId);
+      };
+    }
+  }, [userId, serverIP]);
+
+  // 新しく届いた瓶をホーム画面から開封する
+  const [messageToOpenDetails, setMessageToOpenDetails] = useState(null);
+
+  const handleOpenNewBottle = (bottleData) => {
+    setMessageToOpenDetails(bottleData); // ★ 開封対象のメッセージを保持 (既存のステートを活用)
+    setLargeBottleTapCount(0);        // 大きな瓶のタップカウントをリセット
+
+    // (A) ホーム画面の小さな瓶をフェードアウト
+    Animated.timing(arrivedBottleOpacityAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      // フェードアウト完了後にarrivedBottleをnullにしても良いが、
+      // bottleOpeningOverlayVisibleがtrueになることで隠れるので、ここでは必須ではない。
+      // ただし、オーバーレイを閉じたときに再表示させないためには、ここでnullにするか、
+      // または開封処理完了時にnullにする。
+      // setArrivedBottle(null); // ← ここで消すと、開封キャンセル時に戻せない
+    });
+
+    // (B) 瓶開封オーバーレイを表示し、大きな瓶をスライドイン
+    setBottleOpeningOverlayVisible(true);
+    Animated.timing(largeBottleSlideAnimY, {
+      toValue: 0, // 画面中央（または目的のY座標）へ
+      duration: 400, // スライドアニメーションの時間
+      useNativeDriver: true,
+      // easing: Easing.out(Easing.ease), // 好みでイージングを追加
+    }).start();
+  };
 
   // 執筆モード
   const [writingVisible, setWritingVisible] = useState(false);
@@ -236,7 +334,7 @@ export default function App() {
       clearTimeout(timeoutId); // レスポンスが返ってきたらタイマーをクリア
 
       const data = await res.json();
-      if (data.status === 'received') {
+      if (data.status === 'received_and_saved') {
         setStatusMessage('✅ 送信成功！');
         setMessage('');
         setTitle('');
@@ -287,7 +385,7 @@ export default function App() {
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
-      setReadingMessage(null);
+      setReadingMessage(null); // フェードアウト完了後にメッセージをクリア
     });
   };
 
@@ -346,6 +444,21 @@ export default function App() {
               <Image source={require('./assets/box-button.png')} style={{ width: 100, height: 100 }} />
             </TouchableOpacity>
           </View>
+
+          {/* ★★★ 新しく届いた瓶を表示する (1通のみ) ★★★ */}
+          {arrivedBottle && !bottleOpeningOverlayVisible && !readingMessage && (
+            <Animated.View style={[
+              styles.newBottlesArea, // このスタイルは瓶を配置するエリア全体を指す
+              { opacity: arrivedBottleOpacityAnim }
+            ]}>
+              <TouchableOpacity
+                style={styles.newBottleOnScreen} // 個々の瓶のスタイル
+                onPress={() => handleOpenNewBottle(arrivedBottle)}
+              >
+                <Image source={require('./assets/bottle.png')} style={styles.newBottleImage}/>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
 
           {/* 設定モーダル */}
           <Modal visible={settingsVisible} animationType="slide" transparent={true}>
@@ -566,12 +679,37 @@ export default function App() {
                   <View style={styles.buttonRowContainer}>
                     <Pressable
                       style={[styles.button, { backgroundColor: '#AAA' }]} // ★ 以前定義したボタン共通スタイルをベースに
-                      onPress={() => {
-                        fadeOut();
-                        setBoxVisible(true);
+                      onPress={async () => {
+                        if (readingMessage?.isReceivedMessage && readingMessage.id) {
+                          // ★★★ 受信した手紙の場合の処理 ★★★
+                          try {
+                            const currentServerIP = tempIP || serverIP;
+                            const url = `${currentServerIP}/mark_letter_opened/${userId}/${readingMessage.id}`;
+                            console.log(`開封マークAPI URL: ${url}`);
+                            const response = await fetch(url, {
+                              method: 'POST',
+                            });
+                            if (!response.ok) {
+                              throw new Error(`開封マークAPIエラー: ${response.status}`);
+                            }
+                            const result = await response.json();
+                            if (result.status === "marked_opened_and_in_received" || result.status === "already_in_received") {
+                              console.log(`手紙 ${readingMessage.id} を開封済みとしてサーバーに通知しました。`);
+                              fadeOut();
+                            } else {
+                              Alert.alert("エラー", "手紙の開封状態の更新に失敗しました。");
+                            }
+                          } catch (e) {
+                            console.error("開封マークAPI呼び出しエラー:", e);
+                            Alert.alert("通信エラー", "手紙の開封状態を更新できませんでした。");
+                          }
+                        } else if (!readingMessage?.isReceivedMessage) {
+                          fadeOut();
+                          setBoxVisible(true); // 自分の手紙棚を再表示
+                        }
                       }}
                     >
-                      <Text style={styles.buttonText}>瓶に戻す</Text>
+                      <Text style={styles.buttonText}>{readingMessage?.isReceivedMessage ? '手紙ボックスに入れる' : '瓶に戻す'}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -580,6 +718,56 @@ export default function App() {
           )}
         </View>
       </ImageBackground>
+
+      {/* 瓶を開ける画面 (オーバーレイと大きな瓶) */}
+      {bottleOpeningOverlayVisible && (
+        <View style={styles.overlay}>
+          <Animated.View style={[
+            styles.largeBottleContainer, // 大きな瓶のコンテナスタイル
+            { transform: [{ translateY: largeBottleSlideAnimY }] }
+          ]}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                const newTapCount = largeBottleTapCount + 1;
+                setLargeBottleTapCount(newTapCount);
+                if (newTapCount >= 3) { // 3回タップで開封
+                  // 大きな瓶をスライドアウトさせる (任意)
+                  Animated.timing(largeBottleSlideAnimY, {
+                    toValue: Dimensions.get('window').height, // 画面下にスライドアウト
+                    duration: 300,
+                    useNativeDriver: true,
+                  }).start(() => {
+                    setBottleOpeningOverlayVisible(false); // オーバーレイを閉じる
+                  });
+
+                  // 手紙を読むモーダルを表示する準備
+                  setReadingMessage({
+                    ...messageToOpenDetails, // 開封対象のメッセージ情報
+                    isReceivedMessage: true,  // 受信した手紙であることを示すフラグ
+                  });
+                  fadeAnim.setValue(0); // 手紙を読むモーダルのアニメーション値をリセット
+                  fadeIn();             // 手紙を読むモーダルをフェードイン (既存の関数)
+
+                  // ★ ホーム画面の arrivedBottle をクリア (ここで処理するのが確実)
+                  setArrivedBottle(null);
+                  // arrivedBottleOpacityAnim もリセット
+                  arrivedBottleOpacityAnim.setValue(0);
+                }
+              }}
+            >
+              <Image source={require('./assets/bottle.png')} style={styles.largeBottleImage_opening} />
+            </TouchableOpacity>
+            <Text style={styles.tapPromptText_opening}>
+              {largeBottleTapCount < 3 ? `タップ (${largeBottleTapCount}/3)` : '開封中...'}
+            </Text>
+          </Animated.View>
+          {/* この開封オーバーレイを閉じる「キャンセル」ボタンも必要なら追加 */}
+          {/* <Pressable onPress={() => { ... (開封キャンセル処理) ... }} style={styles.cancelOpenBottleButton}>
+              <Text style={styles.buttonText}>キャンセル</Text>
+          </Pressable> */}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -772,5 +960,42 @@ const styles = StyleSheet.create({
     color: '#222', // 少し濃いめの文字色
     textAlign: 'center',
     fontWeight: '500',
+  },
+  newBottlesArea: { // 新しい瓶をまとめて表示するエリアのスタイル
+    position: 'absolute',
+    bottom: 100, // 例: メイン操作ボタン群の上あたり
+    left: 10,
+    right: 10,
+    flexDirection: 'row', // 横に並べる場合
+    flexWrap: 'wrap',     // 折り返す場合
+    justifyContent: 'center', // 中央寄せ
+    alignItems: 'flex-end',
+    // height: 80, // 高さを指定する場合
+    // backgroundColor: 'rgba(0,255,0,0.1)', // デバッグ用
+  },
+  newBottleOnScreen: { // 個々の新しい瓶のスタイル (TouchableOpacity)
+    marginHorizontal: 5, // 瓶同士の間隔
+    padding: 5,
+    // position: 'absolute' は、bottle.positionStyle を使う場合に有効
+  },
+  newBottleImage: {
+    width: 90,  // 新しい瓶の画像のサイズ (調整してください)
+    height: 130, // 新しい瓶の画像のサイズ (調整してください)
+    resizeMode: 'contain',
+  },
+  largeBottleContainer: { // スライドインする大きな瓶のコンテナ
+    alignItems: 'center',
+    // backgroundColor: 'white', // デバッグ用
+  },
+  largeBottleImage_opening: {
+    width: 180, // 大きな瓶の表示サイズ (調整)
+    height: 300, // 大きな瓶の表示サイズ (調整)
+    resizeMode: 'contain',
+  },
+  tapPromptText_opening: {
+    color: 'white',
+    fontSize: 16,
+    marginTop: 15,
+    fontWeight: 'bold',
   },
 });
