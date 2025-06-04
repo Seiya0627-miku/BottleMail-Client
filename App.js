@@ -6,6 +6,7 @@ import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView,
 import initialMessagesData from './data/messages.json';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
+import { Video, ResizeMode } from 'expo-av'; 
 
 const windowWidth = Dimensions.get('window').width;
 const ASYNC_STORAGE_MESSAGES_KEY = '@MyApp:messages';
@@ -55,7 +56,7 @@ export default function App() {
   const settingsButtonRotateAnim = useRef(new Animated.Value(0)).current; // 0: 0度, 1: 180度 を表現
   const [userId, setUserId] = useState("unknown-user"); // 初期値は適当な文字列
   const [tempUserId, setTempUserId] = useState(userId);
-  const [serverIP, setServerIP] = useState('http://192.168.3.3:8000'); // デフォルト値
+  const [serverIP, setServerIP] = useState('http://192.168.3.6:8000'); // デフォルト値
   const [tempIP, setTempIP] = useState(serverIP);
   const [preferences, setPreferences] = useState({ emotion: "", custom: "" });
   const [tempEmotion, setTempEmotion] = useState(preferences.emotion);
@@ -619,11 +620,18 @@ export default function App() {
         </Animated.View>
       ) : null}
 
-      <ImageBackground
-        source={require('./assets/bg1.png')}
-        style={styles.container}
-        resizeMode="cover" // 画面比率を満たすように拡大。必要に応じて contain/stretch に
-      >
+      <Video
+        style={styles.backgroundVideo}
+        source={require('./assets/background2.mp4')} // ★ 動画ファイルのパス
+        isMuted={true}
+        shouldPlay={true}
+        isLooping={true}
+        resizeMode={ResizeMode.COVER} // ★ expo-video からインポートした ResizeMode を使用
+                                      // または、文字列で "cover" と指定することも可能です
+        // useNativeControls={false} // 通常、背景動画ではコントロールは不要
+      />
+
+      <View style={styles.contentOverlay}>
         <View style={styles.container}>
           {/* 設定ボタン */}
           <View style={{ position: 'absolute', top: 20, right: 20, zIndex: 10 }}>
@@ -986,7 +994,7 @@ export default function App() {
             </Animated.View>
           )}
         </View>
-      
+      </View>
 
       {/* 瓶を開ける画面 (オーバーレイと大きな瓶) */}
       {bottleOpeningOverlayVisible && (
@@ -1037,7 +1045,6 @@ export default function App() {
           </Pressable> */}
         </View>
       )}
-      </ImageBackground>
     </SafeAreaView>
   );
 }
@@ -1058,6 +1065,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 100,
+  },
+  backgroundVideo: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    right: 0,
+  },
+  contentOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
 
   // 設定モーダル

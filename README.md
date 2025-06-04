@@ -23,6 +23,7 @@ npm install -g expo-cli
 npm install @react-native-async-storage/async-storage
 npx expo install expo-application
 npx expo install expo-crypto
+npx expo install expo-av
 #expoコマンドが使えるか確認
 expo --version
 ```
