@@ -928,7 +928,6 @@ export default function App() {
                     <Pressable
                       style={[styles.button, { backgroundColor: '#AAA' }]} // 以前定義したボタン共通スタイルをベースに
                       onPress={async () => {
-                        const currentMessage = readingMessage;
                         if (readingMessage?.isReceivedMessage && readingMessage.id) {
                           // 新しく受信した手紙の場合の処理
                           try {
@@ -945,6 +944,7 @@ export default function App() {
                             if (result.status === "marked_opened_and_in_received" || result.status === "already_in_received") {
                               console.log(`手紙 ${readingMessage.id} を開封済みとしてサーバーに通知しました。`);
                               setMessages(prevMessages => {
+                                const currentMessages = Array.isArray(prevMessages) ? prevMessages : [];
                                 if (!prevMessages.find(m => m.id === result.letter.id)) {
                                   // サーバーから返されたフォーマットをそのまま使う
                                   // dateフィールド名がクライアントのmessagesステートと一致しているか確認
@@ -958,8 +958,11 @@ export default function App() {
                                   const updatedMessages = [...prevMessages, newLetterForBox];
                                   // AsyncStorageへの保存は専用のuseEffectに任せるか、ここで明示的に行う
                                   AsyncStorage.setItem(`${ASYNC_STORAGE_MESSAGES_KEY}_${userId}`, JSON.stringify(updatedMessages))
-                                      .catch(e => console.error("手紙ボックスへの追加保存失敗:", e));
+                                    .then(() => console.log("手紙ボックスへの追加保存成功 (AsyncStorage)"))
+                                    .catch(e => console.error("手紙ボックスへの追加保存失敗 (AsyncStorage):", e));
+                                  return updatedMessages;
                                 }
+                                return currentMessages;
                               });
                               fadeOut();
                             } else {
@@ -983,7 +986,7 @@ export default function App() {
             </Animated.View>
           )}
         </View>
-      </ImageBackground>
+      
 
       {/* 瓶を開ける画面 (オーバーレイと大きな瓶) */}
       {bottleOpeningOverlayVisible && (
@@ -1034,6 +1037,7 @@ export default function App() {
           </Pressable> */}
         </View>
       )}
+      </ImageBackground>
     </SafeAreaView>
   );
 }
@@ -1045,6 +1049,11 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
