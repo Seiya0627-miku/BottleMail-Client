@@ -60,6 +60,7 @@ export default function App() {
   // Sound
   const [bgmSound, setBgmSound] = useState(); // 背景の音
   const soundEffectsRef = useRef({}).current; // 効果音の参照をまとめて保持するオブジェクト
+  const [soundsLoaded, setSoundsLoaded] = useState(false);
   
   useEffect(() => {
     const loadSounds = async () => {
@@ -97,7 +98,7 @@ export default function App() {
           soundEffectsRef['bottlePop'] = bottlePopSound; // 'bottle_pop' という名前で登録
 
           const bottleTapSound = new Audio.Sound();
-          await bottleTapSound.loadAsync(require('./assets/sounds/bottle_tap.mp3'), { volume: 0.9 });
+          await bottleTapSound.loadAsync(require('./assets/sounds/bottle_tap.mp3'), { volume: 0.9, isPitched: true });
           soundEffectsRef['bottleTap'] = bottleTapSound; // 'bottle_tap' という名前で登録
 
           const bottleOpenSound = new Audio.Sound();
@@ -136,6 +137,7 @@ export default function App() {
           soundEffectsRef['boxClose'] = boxCloseSound;
 
           console.log('効果音のロード完了。');
+          setSoundsLoaded(true);
 
         } catch (error) {
           console.error("効果音のロードに失敗しました:", error);
@@ -167,17 +169,12 @@ export default function App() {
     const soundObject = soundEffectsRef[soundName];
     if (soundObject) {
       try {
-        if (soundName === 'bottleTap') {
-          await soundObject.current.replayAsync({
-            rate: rate, // 再生速度を指定
-            shouldCorrectPitch: false,
-          });
-        } else {
-          await soundObject.replayAsync({
-            rate: rate, // 再生速度を指定
-            shouldCorrectPitch: false,
-          });
-        }
+        // 現在再生中の音があれば即座に停止させる
+        await soundObject.stopAsync();
+        await soundObject.replayAsync({
+          rate,
+          shouldCorrectPitch: false,
+        });
       } catch (e) {
         console.log(`効果音 '${soundName}' の再生に失敗:`, e);
       }
@@ -518,7 +515,7 @@ export default function App() {
   // ポーリング
   const POLLING_INTERVAL = 20000; // 20秒ごと (お好みで調整)
   useEffect(() => {
-    if (userId && userId !== 'unknown-user' && userId !== '' && serverIP && !arrivedBottle) {
+    if (userId && userId !== 'unknown-user' && userId !== '' && serverIP && !arrivedBottle && soundsLoaded) {
       console.log(`ポーリングを開始します (ユーザーID: ${userId})`);
       fetchNewLetterFromServer();
       const intervalId = setInterval(fetchNewLetterFromServer, POLLING_INTERVAL);
@@ -527,7 +524,7 @@ export default function App() {
         clearInterval(intervalId);
       };
     }
-  }, [userId, serverIP]);
+  }, [userId, serverIP, arrivedBottle, soundsLoaded]);
 
   // 新しく届いた瓶をホーム画面から開封する
   const [messageToOpenDetails, setMessageToOpenDetails] = useState(null);

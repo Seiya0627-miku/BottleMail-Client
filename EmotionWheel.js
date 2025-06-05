@@ -4,8 +4,8 @@ import Svg, { Path, Circle, Text as SvgText } from 'react-native-svg';
 
 // 感情データ: 名前、色、開始角度、終了角度
 const emotions = [
-  { name: '喜び', color: '#FFD700', startAngle: -22.5, endAngle: 22.5 },   // Gold
-  { name: '信頼', color: '#90EE90', startAngle: 22.5, endAngle: 67.5 },    // LightGreen
+  { name: '喜び', color: 'rgb(255, 233, 63)', startAngle: -22.5, endAngle: 22.5 },   // Gold
+  { name: '信頼', color: 'rgb(163, 216, 66)', startAngle: 22.5, endAngle: 67.5 },    // LightGreen
   { name: '恐れ', color: '#2E8B57', startAngle: 67.5, endAngle: 112.5 },   // SeaGreen
   { name: '驚き', color: '#4682B4', startAngle: 112.5, endAngle: 157.5 },  // SteelBlue
   { name: '悲しみ', color: '#0000CD', startAngle: 157.5, endAngle: 202.5 }, // MediumBlue
