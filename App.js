@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, 
+import { View, TextInput, Alert, StyleSheet, SafeAreaView, Platform, 
   TouchableWithoutFeedback, Keyboard, Modal, Text, Pressable, Image, ImageBackground, FlatList,
   Animated, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
-import { Video, ResizeMode } from 'expo-av'; 
+import { Audio, Video, ResizeMode } from 'expo-av'; 
 import initialMessagesData from './data/messages.json';
 
 const windowWidth = Dimensions.get('window').width;
@@ -291,6 +291,7 @@ export default function App() {
 
       if (data && data.status === "new_letter_available" && data.id) {
         console.log('新しい手紙の通知を受信:', data.id, data.title);
+        playSoundEffect('bottleArrive');
         setArrivedBottle(data); // 届いた瓶の情報をセット (これがホーム画面の瓶になる)
         Animated.timing(arrivedBottleOpacityAnim, {
           toValue: 1,
@@ -607,6 +608,128 @@ export default function App() {
   });
   const viewConfigRef = React.useRef({ viewAreaCoveragePercentThreshold: 50 });
 
+  // Sound
+  const [bgmSound, setBgmSound] = useState(); // 背景の音
+  const soundEffectsRef = useRef({}).current; // 効果音の参照をまとめて保持するオブジェクト
+  
+  useEffect(() => {
+    const loadSounds = async () => {
+      // オーディオセッションの設定 (iOSでサイレントモードでも音を鳴らすため)
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: false, // 他の音を少し下げるか
+        playThroughEarpieceAndroid: false,
+      });
+
+      console.log('サウンドをロード中...');
+      try {
+        // BGMのロードとループ再生設定
+        const { sound: loadedBgm } = await Audio.Sound.createAsync(
+           require('./assets/sounds/beach.mp3'), // ★ BGMファイルへのパス
+           { isLooping: true, volume: 0.3 } // ★ isLooping: true と音量調整
+        );
+        setBgmSound(loadedBgm);
+        console.log('BGMロード完了。');
+        await loadedBgm.playAsync(); // BGMの再生開始
+        console.log('BGM再生開始。');
+
+        // 効果音のロード
+        console.log('効果音をロード中...');
+        try {
+          // --- ボトル関連の音 ---
+          const bottleArriveSound = new Audio.Sound();
+          await bottleArriveSound.loadAsync(require('./assets/sounds/bottle_arrive.mp3'), { volume: 0.7 });
+          soundEffectsRef['bottleArrive'] = bottleArriveSound; // 'bottle_arrive' という名前で登録
+
+          const bottlePopSound = new Audio.Sound();
+          await bottlePopSound.loadAsync(require('./assets/sounds/bottle_pop.mp3'), { volume: 1.0 });
+          soundEffectsRef['bottlePop'] = bottlePopSound; // 'bottle_pop' という名前で登録
+
+          const bottleTapSound = new Audio.Sound();
+          await bottleTapSound.loadAsync(require('./assets/sounds/bottle_tap.mp3'), { volume: 0.9 });
+          soundEffectsRef['bottleTap'] = bottleTapSound; // 'bottle_tap' という名前で登録
+
+          const bottleOpenSound = new Audio.Sound();
+          await bottleOpenSound.loadAsync(require('./assets/sounds/bottle_open.mp3'), { volume: 0.7 });
+          soundEffectsRef['bottleOpen'] = bottleOpenSound; // 'bottleOpen' という名前で登録
+
+          // --- 執筆モーダルの音 ---
+          const writingSound = new Audio.Sound();
+          await writingSound.loadAsync(require('./assets/sounds/writing.mp3'), { volume: 0.5 });
+          soundEffectsRef['writing'] = writingSound; // 'writing' という名前で登録
+
+          const sendSound = new Audio.Sound();
+          await sendSound.loadAsync(require('./assets/sounds/send.mp3'), { volume: 0.8 });
+          soundEffectsRef['send'] = sendSound; // 'send' という名前で登録
+
+          const paperSound = new Audio.Sound();
+          await paperSound.loadAsync(require('./assets/sounds/paper.mp3'), { volume: 0.9 });
+          soundEffectsRef['paper'] = paperSound; // 'paper' という名前で登録
+
+          // --- 設定モーダルの音 ---
+          const settingOpenSound = new Audio.Sound();
+          await settingOpenSound.loadAsync(require('./assets/sounds/setting_open.mp3'), { volume: 0.7 });
+          soundEffectsRef['settingOpen'] = settingOpenSound; // 'settingOpen' という名前で登録
+
+          const settingCloseSound = new Audio.Sound();
+          await settingCloseSound.loadAsync(require('./assets/sounds/setting_close.mp3'), { volume: 0.7 });
+          soundEffectsRef['settingClose'] = settingCloseSound;
+
+          // --- 手紙ボックスの音 ---
+          const boxOpenSound = new Audio.Sound();
+          await boxOpenSound.loadAsync(require('./assets/sounds/box_open.mp3'), { volume: 0.7 });
+          soundEffectsRef['boxOpen'] = boxOpenSound;
+
+          const boxCloseSound = new Audio.Sound();
+          await boxCloseSound.loadAsync(require('./assets/sounds/box_close.mp3'), { volume: 0.8 });
+          soundEffectsRef['boxClose'] = boxCloseSound;
+
+          console.log('効果音のロード完了。');
+
+        } catch (error) {
+          console.error("効果音のロードに失敗しました:", error);
+        }
+
+      } catch (error) {
+        console.error("サウンドのロードに失敗しました:", error);
+      }
+    };
+
+    loadSounds();
+
+    // クリーンアップ関数: コンポーネントがアンマウントされるときにサウンドをアンロード
+    return () => {
+      console.log('サウンドをアンロード中...');
+      if (bgmSound) {
+        bgmSound.unloadAsync();
+      }
+      // soundEffectsRef の中のサウンドを全てアンロード
+      Object.values(soundEffectsRef).forEach(sound => {
+        if (sound) {
+          sound.unloadAsync();
+        }
+      });
+    };
+  }, []);
+
+  const playSoundEffect = async (soundName, rate = 1.0) => {
+    const soundObject = soundEffectsRef[soundName];
+    if (soundObject) {
+      try {
+        await soundObject.replayAsync({
+          rate: rate, // 再生速度を指定
+          shouldCorrectPitch: false,
+        });
+      } catch (e) {
+        console.log(`効果音 '${soundName}' の再生に失敗:`, e);
+      }
+    } else {
+      console.warn(`効果音 '${soundName}' はロードされていません。`);
+    }
+  };
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       {statusMessage ? (
@@ -623,7 +746,7 @@ export default function App() {
 
       <Video
         style={styles.backgroundVideo}
-        source={require('./assets/background2.mp4')} // ★ 動画ファイルのパス
+        source={require('./assets/background.mp4')} // ★ 動画ファイルのパス
         isMuted={true}
         shouldPlay={true}
         isLooping={true}
@@ -636,7 +759,7 @@ export default function App() {
         <View style={styles.container}>
           {/* 設定ボタン */}
           <View style={{ position: 'absolute', top: 20, right: 20, zIndex: 10 }}>
-            <TouchableOpacity onPress={() => setSettingsVisible(true)}>
+            <TouchableOpacity onPress={() => {setSettingsVisible(true); playSoundEffect('settingOpen');}}>
               <Animated.Image
                 source={require('./assets/setting-button.png')}
                 style={[
@@ -649,6 +772,7 @@ export default function App() {
           {/* 執筆ボタン */}
           <View style={{ position: 'absolute', bottom: 15, left: 15, zIndex: 10 }}>
             <TouchableOpacity onPress={() => {
+              playSoundEffect('writing'); // 設定開く音を再生
               setWritingVisible(true);
               Animated.timing(slideAnim, {
                 toValue: 0,
@@ -662,7 +786,7 @@ export default function App() {
 
           {/* 手紙ボックスボタン */}
           <View style={{ position: 'absolute', bottom: 15, right: 15, zIndex: 10 }}>
-            <TouchableOpacity onPress={() => setBoxVisible(true)}>
+            <TouchableOpacity onPress={() => {setBoxVisible(true); playSoundEffect('boxOpen');}}>
               <Image source={require('./assets/box-button.png')} style={{ width: 100, height: 100 }} />
             </TouchableOpacity>
           </View>
@@ -741,12 +865,12 @@ export default function App() {
 
                     {/* --- 保存ボタンとキャンセルボタン --- */}
                     <View style={styles.buttonRowContainer}>
-                      <Pressable style={styles.buttonInRow} onPress={saveSettings}>
+                      <Pressable style={styles.buttonInRow} onPress={() => {saveSettings(); playSoundEffect('settingClose');}}>
                         <Text style={styles.buttonText}>保存</Text>
                       </Pressable>
                       <Pressable
                         style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}
-                        onPress={() => setSettingsVisible(false)}
+                        onPress={() => {setSettingsVisible(false); playSoundEffect('settingClose');}}
                       >
                         <Text style={styles.buttonText}>キャンセル</Text>
                       </Pressable>
@@ -804,13 +928,14 @@ export default function App() {
                     {/* ボタンエリア */}
                     <View style={styles.buttonRowContainer}>
                       <Pressable
-                        onPress={sendMessage}
+                        onPress={() => {sendMessage(); playSoundEffect('send');}} // 送信ボタンを押したときの音を再生}
                         style={isSending ? [styles.buttonInRow, { backgroundColor: '#175C94' }] : styles.buttonInRow}
                         disabled={isSending} // 送信中はボタンを無効化
                       >
                         <Text style={styles.buttonText}>{isSending ? '送信中…' : '送信する'}</Text>
                       </Pressable>
                       <Pressable onPress={() => {
+                        playSoundEffect('paper'); // 紙の音を再生
                         Animated.timing(slideAnim, {
                           toValue: 800,
                           duration: 300,
@@ -856,6 +981,7 @@ export default function App() {
                               style={styles.bottleItemOnShelf}
                               activeOpacity={0.7}
                               onPress={() => {
+                                playSoundEffect('bottleOpen'); // 手紙を読むときの音を再生
                                 setReadingMessage({...msg, isReceivedMessage: false });
                                 setBoxVisible(false);
                                 fadeAnim.setValue(0); // フェードインのために透明度をリセット
@@ -899,7 +1025,7 @@ export default function App() {
                 )}
 
                 <TouchableOpacity
-                  onPress={() => setBoxVisible(false)}
+                  onPress={() => {setBoxVisible(false); playSoundEffect('boxClose');}}
                   style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom:-55 }]}
                 >
                   <Text style={styles.buttonText}>閉じる</Text>
@@ -945,6 +1071,7 @@ export default function App() {
                     <Pressable
                       style={[styles.button, { backgroundColor: '#AAA' }]} // 以前定義したボタン共通スタイルをベースに
                       onPress={async () => {
+                        playSoundEffect('paper'); // 手紙を読むときの音を再生
                         if (readingMessage?.isReceivedMessage && readingMessage.id) {
                           // 新しく受信した手紙の場合の処理
                           try {
@@ -1016,8 +1143,10 @@ export default function App() {
               activeOpacity={0.9}
               onPress={() => {
                 const newTapCount = largeBottleTapCount + 1;
+                playSoundEffect('bottleTap', 0.9+0.1*newTapCount); // タップ音を再生
                 setLargeBottleTapCount(newTapCount);
-                if (newTapCount >= 3) { // 3回タップで開封
+                if (newTapCount >= 4) { // 3回タップで開封
+                  playSoundEffect('bottlePop'); // 開封音を再生
                   // 大きな瓶をスライドアウトさせる (任意)
                   Animated.timing(largeBottleSlideAnimY, {
                     toValue: Dimensions.get('window').height, // 画面下にスライドアウト
@@ -1045,7 +1174,7 @@ export default function App() {
               <Image source={require('./assets/bottle.png')} style={styles.largeBottleImage_opening} />
             </TouchableOpacity>
             <Text style={styles.tapPromptText_opening}>
-              {largeBottleTapCount < 3 ? `タップ (${largeBottleTapCount}/3)` : '開封中...'}
+              {largeBottleTapCount < 4 ? `タップ (${largeBottleTapCount}/4)` : '開封中...'}
             </Text>
           </Animated.View>
           {/* この開封オーバーレイを閉じる「キャンセル」ボタンも必要なら追加 */}
