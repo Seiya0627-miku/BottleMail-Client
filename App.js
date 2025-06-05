@@ -7,6 +7,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import { Audio, Video, ResizeMode } from 'expo-av'; 
+import { Asset } from 'expo-asset';
 import initialMessagesData from './data/messages.json';
 
 const windowWidth = Dimensions.get('window').width;
@@ -90,6 +91,28 @@ export default function App() {
   useEffect(() => {
     const initializeApp = async () => {
       setIsLoadingApp(true);
+
+      // 画像アセットのプリロード処理
+      try {
+        console.log("画像アセットのプリロードを開始します...");
+        const imagesToCache = [
+          require('./assets/shelf.png'),
+          require('./assets/letter.png'),
+          require('./assets/bottle.png'),
+          require('./assets/box-button.png'),
+          require('./assets/setting-button.png'),
+          require('./assets/write-button.png'),
+        ];
+
+        const cacheImages = imagesToCache.map(image => {
+          return Asset.fromModule(image).downloadAsync();
+        });
+        
+        await Promise.all(cacheImages); // 全ての画像のダウンロード（キャッシュ）を待つ
+        console.log("画像アセットのプリロードが完了しました！");
+      } catch (e) {
+        console.warn("画像アセットのプリロードに失敗しました:", e);
+      }
 
       let idForApp = null;
       let fetchedShortId = null; // To store the "user-xxxx" formatted ID
