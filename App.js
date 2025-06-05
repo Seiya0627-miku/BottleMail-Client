@@ -4,10 +4,12 @@ import { View, TextInput, Alert, StyleSheet, SafeAreaView, Platform,
   TouchableWithoutFeedback, Keyboard, Modal, Text, Pressable, Image, ImageBackground, FlatList,
   Animated, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import { Audio, Video, ResizeMode } from 'expo-av'; 
 import { Asset } from 'expo-asset';
+import * as Haptics from 'expo-haptics';
 
 import EmotionWheel from './EmotionWheel';
 import initialMessagesData from './data/messages.json';
@@ -530,6 +532,7 @@ export default function App() {
   const [messageToOpenDetails, setMessageToOpenDetails] = useState(null);
 
   const handleOpenNewBottle = (bottleData) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setMessageToOpenDetails(bottleData); // 開封対象のメッセージを保持 (既存のステートを活用)
     setLargeBottleTapCount(0);        // 大きな瓶のタップカウントをリセット
 
@@ -1216,6 +1219,7 @@ export default function App() {
               onPress={() => {
                 const newTapCount = largeBottleTapCount + 1;
                 playSoundEffect('bottleTap', 0.9+0.1*newTapCount); // タップ音を再生
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setLargeBottleTapCount(newTapCount);
                 if (newTapCount >= 4) { // 3回タップで開封
                   playSoundEffect('bottlePop'); // 開封音を再生
@@ -1264,16 +1268,19 @@ export default function App() {
         // onRequestClose={() => setEmotionModalVisible(false)} // Androidバックボタンで閉じられるように
       >
         <View style={styles.overlay}>
-          <View style={styles.emotionModalContent}>
+          <LinearGradient
+            colors={['#rgb(129, 50, 163)', 'rgb(91, 64, 198)']} // ★ グラデーションの色 (上:ラベンダー, 下:ライラック)
+            style={styles.emotionModalContent} // ★ 既存のスタイルを適用
+          >
             <Text style={styles.emotionModalTitle}>最近はどんな気分？</Text>
             <EmotionWheel onEmotionSelect={handleEmotionSelect} />
-            <Pressable
+            {/* <Pressable
               style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom:0}]}
               onPress={() => setEmotionModalVisible(false)} // 「今は選択しない」場合
             >
               <Text style={styles.buttonText}>あとで</Text>
-            </Pressable>
-          </View>
+            </Pressable> */}
+          </LinearGradient>
         </View>
       </Modal>
     </SafeAreaView>
@@ -1538,7 +1545,7 @@ const styles = StyleSheet.create({
   emotionModalContent: {
     width: '90%',
     maxWidth: 350,
-    backgroundColor: 'white',
+    // backgroundColor: 'rgb(150, 100, 179)',
     borderRadius: 15,
     padding: 20,
     alignItems: 'center',
@@ -1551,7 +1558,7 @@ const styles = StyleSheet.create({
   emotionModalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333',
+    color: 'white',
     marginBottom: 20,
   },
 });

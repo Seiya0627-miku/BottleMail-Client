@@ -21,7 +21,9 @@
     "react-native": "0.79.2",
     "react-native-keyboard-aware-scroll-view": "^0.9.5",
     "expo-asset": "~11.1.5",
-    "react-native-svg": "15.11.2"
+    "react-native-svg": "15.11.2",
+    "expo-linear-gradient": "~14.1.5",
+    "expo-haptics": "~14.1.4"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"

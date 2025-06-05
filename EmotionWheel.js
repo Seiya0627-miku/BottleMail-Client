@@ -1,36 +1,25 @@
-import React from 'react';
+// EmotionWheel.js
+import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { Path, Circle, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Circle, Text as SvgText, Defs, LinearGradient, Stop } from 'react-native-svg';
+import * as Haptics from 'expo-haptics'; // ★ Haptics をインポート
 
-// 感情データ: 名前、色、開始角度、終了角度
+// 感情データとヘルパー関数 (変更なし)
 const emotions = [
-  { name: '喜び', color: 'rgb(255, 233, 63)', startAngle: -22.5, endAngle: 22.5 },   // Gold
-  { name: '信頼', color: 'rgb(163, 216, 66)', startAngle: 22.5, endAngle: 67.5 },    // LightGreen
-  { name: '恐れ', color: '#2E8B57', startAngle: 67.5, endAngle: 112.5 },   // SeaGreen
-  { name: '驚き', color: '#4682B4', startAngle: 112.5, endAngle: 157.5 },  // SteelBlue
-  { name: '悲しみ', color: '#0000CD', startAngle: 157.5, endAngle: 202.5 }, // MediumBlue
-  { name: '嫌悪', color: '#DA70D6', startAngle: 202.5, endAngle: 247.5 },  // Orchid
-  { name: '怒り', color: '#DC143C', startAngle: 247.5, endAngle: 292.5 },  // Crimson
-  { name: '期待', color: '#FFA500', startAngle: 292.5, endAngle: 337.5 },  // Orange
+  { name: '喜び', colors: ['#DED481', '#DECC33'] }, { name: '信頼', colors: ['#AED581', '#7CB342'] },
+  { name: '恐れ', colors: ['#4DB6AC', '#00897B'] }, { name: '驚き', colors: ['#4FC3F7', '#039BE5'] },
+  { name: '悲しみ', colors: ['#64B5F6', '#1E88E5'] }, { name: '嫌悪', colors: ['#BA68C8', '#9C27B0'] },
+  { name: '怒り', colors: ['#E57373', '#D32F2F'] }, { name: '期待', colors: ['#FFB74D', '#FB8C00'] },
 ];
+const neutralEmotion = { name: 'その他', colors: ['#B0B0B0', '#808080'] }; // ★ グラデーション用に色を配列に
 
-const neutralEmotion = { name: '中立', color: '#A9A9A9' }; // DarkGray
-
-// 扇形のSVGパスを生成するヘルパー関数
 const createArcPath = (x, y, radius, startAngle, endAngle) => {
   const start = polarToCartesian(x, y, radius, endAngle);
   const end = polarToCartesian(x, y, radius, startAngle);
   const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
-  const d = [
-    'M', x, y,
-    'L', start.x, start.y,
-    'A', radius, radius, 0, largeArcFlag, 0, end.x, end.y,
-    'Z',
-  ].join(' ');
+  const d = ['M', x, y, 'L', start.x, start.y, 'A', radius, radius, 0, largeArcFlag, 0, end.x, end.y, 'Z'].join(' ');
   return d;
 };
-
-// 角度と半径から座標を計算するヘルパー関数
 const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => {
   const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
   return {
@@ -39,45 +28,106 @@ const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => {
   };
 };
 
-// EmotionWheel コンポーネント本体
 const EmotionWheel = ({ onEmotionSelect }) => {
-  const size = 300; // SVG全体のサイズ
-  const center = size / 2;
-  const outerRadius = size / 2;
-  const innerRadius = size / 5; // 中央の円の半径
+  const svgSize = 300; // ★ SVG全体のサイズを少し大きくしてはみ出し領域を確保
+  const wheelRadius = 150; // 輪自体の半径は300x300のまま
+  const center = svgSize / 2;
+  const innerRadius = wheelRadius / 2.5;
+
+  const [pressedEmotion, setPressedEmotion] = useState(null);
+
+  const handlePressIn = (emotionName) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // ★ 触覚フィードバック
+    setPressedEmotion(emotionName);
+  };
+  const handlePressOut = (emotionName) => {
+    setPressedEmotion(null);
+    onEmotionSelect(emotionName);
+  };
+
+  const emotionGradients = emotions.map((emotion) => (
+    <LinearGradient
+      key={`grad-${emotion.name}`}
+      id={`gradient-${emotion.name}`}
+      x1="0.5" y1="0" x2="0.5" y2="1"
+    >
+      <Stop offset="0" stopColor={emotion.colors[0]} />
+      <Stop offset="1" stopColor={emotion.colors[1]} />
+    </LinearGradient>
+  ));
 
   return (
     <View style={styles.container}>
-      <Svg height={size} width={size} viewBox={`0 0 ${size} ${size}`}>
-        {/* 8つの感情の扇形を描画 */}
-        {emotions.map((emotion) => (
-          <Path
-            key={emotion.name}
-            d={createArcPath(center, center, outerRadius, emotion.startAngle, emotion.endAngle)}
-            fill={emotion.color}
-            onPress={() => onEmotionSelect(emotion.name)}
-          />
-        ))}
+      <Svg height={svgSize} width={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`}>
+        {/* ★★★ グラデーションの定義 ★★★ */}
+        <Defs>
+          <LinearGradient id="neutralGradient" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={neutralEmotion.colors[0]} />
+            <Stop offset="1" stopColor={neutralEmotion.colors[1]} />
+          </LinearGradient>
 
-        {/* 中央の「中立」の円を描画 */}
+          {emotionGradients}
+        </Defs>
+
+        {emotions.map((emotion, index) => {
+          const angle = 45;
+          const startAngle = index * angle - angle / 2;
+          const endAngle = index * angle + angle / 2;
+          
+          const isPressed = pressedEmotion === emotion.name;
+
+          // テキストの位置計算
+          const midAngle = (startAngle + endAngle) / 2;
+          const textRadius = innerRadius + (wheelRadius - innerRadius) / 2;
+          const textPos = polarToCartesian(center, center, textRadius, midAngle);
+
+          return (
+            <React.Fragment key={emotion.name}>
+              {/* 扇形 */}
+              <Path
+                d={createArcPath(center, center, wheelRadius, startAngle, endAngle)}
+                fill={`url(#gradient-${emotion.name})`}
+                onPressIn={() => handlePressIn(emotion.name)}
+                onPressOut={() => handlePressOut(emotion.name)}
+                opacity={isPressed ? 0.7 : 1.0}
+              />
+              {/* 扇形のテキスト */}
+              <SvgText
+                x={textPos.x}
+                y={textPos.y}
+                fill="white" // ★ 白文字に変更
+                fontSize="24"  // ★ 20ptに変更
+                fontWeight="bold"
+                textAnchor="middle"
+                alignmentBaseline="central"
+                pointerEvents="none"
+              >
+                {emotion.name}
+              </SvgText>
+            </React.Fragment>
+          );
+        })}
+
+        {/* 中央の「中立」の円 */}
         <Circle
           cx={center}
           cy={center}
           r={innerRadius}
-          fill={neutralEmotion.color}
-          onPress={() => onEmotionSelect(neutralEmotion.name)}
+          fill="url(#neutralGradient)" // ★ グラデーションを適用
+          onPressIn={() => handlePressIn(neutralEmotion.name)}
+          onPressOut={() => handlePressOut(neutralEmotion.name)}
+          // ★ タップ時のフィードバック
+          opacity={pressedEmotion === neutralEmotion.name ? 0.7 : 1.0}
         />
-
-        {/* 中央の円のテキスト */}
         <SvgText
           x={center}
           y={center}
           fill="white"
-          fontSize="20"
+          fontSize="24"
           fontWeight="bold"
           textAnchor="middle"
           alignmentBaseline="central"
-          onPress={() => onEmotionSelect(neutralEmotion.name)} // テキストをタップしても反応するように
+          pointerEvents="none"
         >
           {neutralEmotion.name}
         </SvgText>
