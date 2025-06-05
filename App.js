@@ -8,6 +8,8 @@ import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import { Audio, Video, ResizeMode } from 'expo-av'; 
 import { Asset } from 'expo-asset';
+
+import EmotionWheel from './EmotionWheel';
 import initialMessagesData from './data/messages.json';
 
 const windowWidth = Dimensions.get('window').width;
@@ -53,6 +55,137 @@ const actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
 
 
 export default function App() {
+  const [emotionModalVisible, setEmotionModalVisible] = useState(false); // 感情選択モーダルの表示状態
+
+  // Sound
+  const [bgmSound, setBgmSound] = useState(); // 背景の音
+  const soundEffectsRef = useRef({}).current; // 効果音の参照をまとめて保持するオブジェクト
+  
+  useEffect(() => {
+    const loadSounds = async () => {
+      // オーディオセッションの設定 (iOSでサイレントモードでも音を鳴らすため)
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        allowsRecordingIOS: false,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: false, // 他の音を少し下げるか
+        playThroughEarpieceAndroid: false,
+      });
+
+      console.log('サウンドをロード中...');
+      try {
+        // BGMのロードとループ再生設定
+        const { sound: loadedBgm } = await Audio.Sound.createAsync(
+           require('./assets/sounds/beach.mp3'), // ★ BGMファイルへのパス
+           { isLooping: true, volume: 0.3 } // ★ isLooping: true と音量調整
+        );
+        setBgmSound(loadedBgm);
+        console.log('BGMロード完了。');
+        await loadedBgm.playAsync(); // BGMの再生開始
+        console.log('BGM再生開始。');
+
+        // 効果音のロード
+        console.log('効果音をロード中...');
+        try {
+          // --- ボトル関連の音 ---
+          const bottleArriveSound = new Audio.Sound();
+          await bottleArriveSound.loadAsync(require('./assets/sounds/bottle_arrive.mp3'), { volume: 0.7 });
+          soundEffectsRef['bottleArrive'] = bottleArriveSound; // 'bottle_arrive' という名前で登録
+
+          const bottlePopSound = new Audio.Sound();
+          await bottlePopSound.loadAsync(require('./assets/sounds/bottle_pop.mp3'), { volume: 1.0 });
+          soundEffectsRef['bottlePop'] = bottlePopSound; // 'bottle_pop' という名前で登録
+
+          const bottleTapSound = new Audio.Sound();
+          await bottleTapSound.loadAsync(require('./assets/sounds/bottle_tap.mp3'), { volume: 0.9 });
+          soundEffectsRef['bottleTap'] = bottleTapSound; // 'bottle_tap' という名前で登録
+
+          const bottleOpenSound = new Audio.Sound();
+          await bottleOpenSound.loadAsync(require('./assets/sounds/bottle_open.mp3'), { volume: 0.7 });
+          soundEffectsRef['bottleOpen'] = bottleOpenSound; // 'bottleOpen' という名前で登録
+
+          // --- 執筆モーダルの音 ---
+          const writingSound = new Audio.Sound();
+          await writingSound.loadAsync(require('./assets/sounds/writing.mp3'), { volume: 0.5 });
+          soundEffectsRef['writing'] = writingSound; // 'writing' という名前で登録
+
+          const sendSound = new Audio.Sound();
+          await sendSound.loadAsync(require('./assets/sounds/send.mp3'), { volume: 0.8 });
+          soundEffectsRef['send'] = sendSound; // 'send' という名前で登録
+
+          const paperSound = new Audio.Sound();
+          await paperSound.loadAsync(require('./assets/sounds/paper.mp3'), { volume: 0.9 });
+          soundEffectsRef['paper'] = paperSound; // 'paper' という名前で登録
+
+          // --- 設定モーダルの音 ---
+          const settingOpenSound = new Audio.Sound();
+          await settingOpenSound.loadAsync(require('./assets/sounds/setting_open.mp3'), { volume: 0.7 });
+          soundEffectsRef['settingOpen'] = settingOpenSound; // 'settingOpen' という名前で登録
+
+          const settingCloseSound = new Audio.Sound();
+          await settingCloseSound.loadAsync(require('./assets/sounds/setting_close.mp3'), { volume: 0.7 });
+          soundEffectsRef['settingClose'] = settingCloseSound;
+
+          // --- 手紙ボックスの音 ---
+          const boxOpenSound = new Audio.Sound();
+          await boxOpenSound.loadAsync(require('./assets/sounds/box_open.mp3'), { volume: 0.7 });
+          soundEffectsRef['boxOpen'] = boxOpenSound;
+
+          const boxCloseSound = new Audio.Sound();
+          await boxCloseSound.loadAsync(require('./assets/sounds/box_close.mp3'), { volume: 0.8 });
+          soundEffectsRef['boxClose'] = boxCloseSound;
+
+          console.log('効果音のロード完了。');
+
+        } catch (error) {
+          console.error("効果音のロードに失敗しました:", error);
+        }
+
+      } catch (error) {
+        console.error("サウンドのロードに失敗しました:", error);
+      }
+    };
+
+    loadSounds();
+
+    // クリーンアップ関数: コンポーネントがアンマウントされるときにサウンドをアンロード
+    return () => {
+      console.log('サウンドをアンロード中...');
+      if (bgmSound) {
+        bgmSound.unloadAsync();
+      }
+      // soundEffectsRef の中のサウンドを全てアンロード
+      Object.values(soundEffectsRef).forEach(sound => {
+        if (sound) {
+          sound.unloadAsync();
+        }
+      });
+    };
+  }, []);
+
+  const playSoundEffect = async (soundName, rate = 1.0) => {
+    const soundObject = soundEffectsRef[soundName];
+    if (soundObject) {
+      try {
+        if (soundName === 'bottleTap') {
+          await soundObject.current.replayAsync({
+            rate: rate, // 再生速度を指定
+            shouldCorrectPitch: false,
+          });
+        } else {
+          await soundObject.replayAsync({
+            rate: rate, // 再生速度を指定
+            shouldCorrectPitch: false,
+          });
+        }
+      } catch (e) {
+        console.log(`効果音 '${soundName}' の再生に失敗:`, e);
+      }
+    } else {
+      console.warn(`効果音 '${soundName}' はロードされていません。`);
+    }
+  };
+
   // 設定
   const [settingsVisible, setSettingsVisible] = useState(false);
   const settingsButtonRotateAnim = useRef(new Animated.Value(0)).current; // 0: 0度, 1: 180度 を表現
@@ -280,11 +413,52 @@ export default function App() {
         setMessages(initialMessagesData);
         setIsLoadingMessages(false); // この場合もローディングは終了
       }
+
       setIsLoadingApp(false); // 全ての初期化処理が終わったらローディング終了
+      setEmotionModalVisible(true);
     };
 
     initializeApp();
   }, [serverIP]); // Re-run if serverIP changes, userId is now set within this effect
+
+  // --- 感情選択モーダルのハンドラー ---
+  const handleEmotionSelect = async (selectedEmotion) => {
+    console.log("選択された感情:", selectedEmotion);
+    setEmotionModalVisible(false); // まずポップアップを閉じる
+
+    // 1. Reactのステートを更新
+    const updatedPreferencesObject = {
+      ...preferences, // 既存の custom 設定などを保持
+      emotion: selectedEmotion,
+    };
+    setPreferences(updatedPreferencesObject);
+
+    // 2. サーバーに設定を送信
+    // (saveSettings関数とほぼ同じロジック)
+    if (userId && serverIP) {
+      try {
+        const url = `${serverIP}/update_preferences/${userId}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedPreferencesObject), // 更新されたpreferences全体を送信
+        });
+        if (response.ok) {
+          console.log("サーバーへ感情設定を保存成功。");
+          setStatusMessage(`気分を「${selectedEmotion}」に設定しました！`);
+        } else { throw new Error(`サーバーエラー: ${response.status}`); }
+      } catch (e) {
+        console.error("サーバーへの感情設定保存失敗:", e);
+        Alert.alert("通信エラー", "設定の同期に失敗しました。");
+      }
+    }
+
+    // 3. AsyncStorageにも設定を保存
+    try {
+      await AsyncStorage.setItem(`${ASYNC_STORAGE_PREFERENCES_KEY}_${userId}`, JSON.stringify(updatedPreferencesObject));
+      console.log("感情設定をAsyncStorageに保存しました。");
+    } catch (e) { console.error("AsyncStorageへの感情設定保存失敗:", e); }
+  };
 
   // --- 手紙受信・開封フロー用 ---
   const [arrivedBottle, setArrivedBottle] = useState(null); // ホームに表示する新しい瓶のデータ (1通)
@@ -631,128 +805,6 @@ export default function App() {
   });
   const viewConfigRef = React.useRef({ viewAreaCoveragePercentThreshold: 50 });
 
-  // Sound
-  const [bgmSound, setBgmSound] = useState(); // 背景の音
-  const soundEffectsRef = useRef({}).current; // 効果音の参照をまとめて保持するオブジェクト
-  
-  useEffect(() => {
-    const loadSounds = async () => {
-      // オーディオセッションの設定 (iOSでサイレントモードでも音を鳴らすため)
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        allowsRecordingIOS: false,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: false, // 他の音を少し下げるか
-        playThroughEarpieceAndroid: false,
-      });
-
-      console.log('サウンドをロード中...');
-      try {
-        // BGMのロードとループ再生設定
-        const { sound: loadedBgm } = await Audio.Sound.createAsync(
-           require('./assets/sounds/beach.mp3'), // ★ BGMファイルへのパス
-           { isLooping: true, volume: 0.3 } // ★ isLooping: true と音量調整
-        );
-        setBgmSound(loadedBgm);
-        console.log('BGMロード完了。');
-        await loadedBgm.playAsync(); // BGMの再生開始
-        console.log('BGM再生開始。');
-
-        // 効果音のロード
-        console.log('効果音をロード中...');
-        try {
-          // --- ボトル関連の音 ---
-          const bottleArriveSound = new Audio.Sound();
-          await bottleArriveSound.loadAsync(require('./assets/sounds/bottle_arrive.mp3'), { volume: 0.7 });
-          soundEffectsRef['bottleArrive'] = bottleArriveSound; // 'bottle_arrive' という名前で登録
-
-          const bottlePopSound = new Audio.Sound();
-          await bottlePopSound.loadAsync(require('./assets/sounds/bottle_pop.mp3'), { volume: 1.0 });
-          soundEffectsRef['bottlePop'] = bottlePopSound; // 'bottle_pop' という名前で登録
-
-          const bottleTapSound = new Audio.Sound();
-          await bottleTapSound.loadAsync(require('./assets/sounds/bottle_tap.mp3'), { volume: 0.9 });
-          soundEffectsRef['bottleTap'] = bottleTapSound; // 'bottle_tap' という名前で登録
-
-          const bottleOpenSound = new Audio.Sound();
-          await bottleOpenSound.loadAsync(require('./assets/sounds/bottle_open.mp3'), { volume: 0.7 });
-          soundEffectsRef['bottleOpen'] = bottleOpenSound; // 'bottleOpen' という名前で登録
-
-          // --- 執筆モーダルの音 ---
-          const writingSound = new Audio.Sound();
-          await writingSound.loadAsync(require('./assets/sounds/writing.mp3'), { volume: 0.5 });
-          soundEffectsRef['writing'] = writingSound; // 'writing' という名前で登録
-
-          const sendSound = new Audio.Sound();
-          await sendSound.loadAsync(require('./assets/sounds/send.mp3'), { volume: 0.8 });
-          soundEffectsRef['send'] = sendSound; // 'send' という名前で登録
-
-          const paperSound = new Audio.Sound();
-          await paperSound.loadAsync(require('./assets/sounds/paper.mp3'), { volume: 0.9 });
-          soundEffectsRef['paper'] = paperSound; // 'paper' という名前で登録
-
-          // --- 設定モーダルの音 ---
-          const settingOpenSound = new Audio.Sound();
-          await settingOpenSound.loadAsync(require('./assets/sounds/setting_open.mp3'), { volume: 0.7 });
-          soundEffectsRef['settingOpen'] = settingOpenSound; // 'settingOpen' という名前で登録
-
-          const settingCloseSound = new Audio.Sound();
-          await settingCloseSound.loadAsync(require('./assets/sounds/setting_close.mp3'), { volume: 0.7 });
-          soundEffectsRef['settingClose'] = settingCloseSound;
-
-          // --- 手紙ボックスの音 ---
-          const boxOpenSound = new Audio.Sound();
-          await boxOpenSound.loadAsync(require('./assets/sounds/box_open.mp3'), { volume: 0.7 });
-          soundEffectsRef['boxOpen'] = boxOpenSound;
-
-          const boxCloseSound = new Audio.Sound();
-          await boxCloseSound.loadAsync(require('./assets/sounds/box_close.mp3'), { volume: 0.8 });
-          soundEffectsRef['boxClose'] = boxCloseSound;
-
-          console.log('効果音のロード完了。');
-
-        } catch (error) {
-          console.error("効果音のロードに失敗しました:", error);
-        }
-
-      } catch (error) {
-        console.error("サウンドのロードに失敗しました:", error);
-      }
-    };
-
-    loadSounds();
-
-    // クリーンアップ関数: コンポーネントがアンマウントされるときにサウンドをアンロード
-    return () => {
-      console.log('サウンドをアンロード中...');
-      if (bgmSound) {
-        bgmSound.unloadAsync();
-      }
-      // soundEffectsRef の中のサウンドを全てアンロード
-      Object.values(soundEffectsRef).forEach(sound => {
-        if (sound) {
-          sound.unloadAsync();
-        }
-      });
-    };
-  }, []);
-
-  const playSoundEffect = async (soundName, rate = 1.0) => {
-    const soundObject = soundEffectsRef[soundName];
-    if (soundObject) {
-      try {
-        await soundObject.replayAsync({
-          rate: rate, // 再生速度を指定
-          shouldCorrectPitch: false,
-        });
-      } catch (e) {
-        console.log(`効果音 '${soundName}' の再生に失敗:`, e);
-      }
-    } else {
-      console.warn(`効果音 '${soundName}' はロードされていません。`);
-    }
-  };
-
   return (
     <SafeAreaView style={{ flex: 1 }}>
       {statusMessage ? (
@@ -1049,7 +1101,7 @@ export default function App() {
 
                 <TouchableOpacity
                   onPress={() => {setBoxVisible(false); playSoundEffect('boxClose');}}
-                  style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom:-55 }]}
+                  style={[styles.button, { backgroundColor: 'rgb(60, 43, 33)', position: 'absolute', bottom: '-15%' }]}
                 >
                   <Text style={styles.buttonText}>閉じる</Text>
                 </TouchableOpacity>
@@ -1206,6 +1258,27 @@ export default function App() {
           </Pressable> */}
         </View>
       )}
+
+      {/* 感情選択モーダル */}
+      <Modal
+        visible={emotionModalVisible}
+        transparent={true}
+        animationType="fade"
+        // onRequestClose={() => setEmotionModalVisible(false)} // Androidバックボタンで閉じられるように
+      >
+        <View style={styles.overlay}>
+          <View style={styles.emotionModalContent}>
+            <Text style={styles.emotionModalTitle}>最近はどんな気分？</Text>
+            <EmotionWheel onEmotionSelect={handleEmotionSelect} />
+            <Pressable
+              style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom:0}]}
+              onPress={() => setEmotionModalVisible(false)} // 「今は選択しない」場合
+            >
+              <Text style={styles.buttonText}>あとで</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1464,5 +1537,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 15,
     fontWeight: 'bold',
+  },
+  emotionModalContent: {
+    width: '90%',
+    maxWidth: 350,
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 20,
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+  },
+  emotionModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 20,
   },
 });

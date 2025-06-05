@@ -24,8 +24,9 @@ npm install @react-native-async-storage/async-storage
 npx expo install expo-application
 npx expo install expo-crypto
 npx expo install expo-av
-npx expo install react-native-keyboard-aware-scroll-view
 npx expo install expo-asset
+npx expo install react-native-keyboard-aware-scroll-view
+npx expo install react-native-svg
 
 #expoコマンドが使えるか確認
 expo --version
