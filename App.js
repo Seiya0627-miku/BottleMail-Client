@@ -618,6 +618,7 @@ export default function App() {
 
       const data = await res.json();
       if (data.status === 'received_and_saved') {
+        playSoundEffect('send');
         setStatusMessage('✅ 送信成功！');
         setMessage('');
         setTitle('');
@@ -965,7 +966,7 @@ export default function App() {
                     {/* ボタンエリア */}
                     <View style={styles.buttonRowContainer}>
                       <Pressable
-                        onPress={() => {sendMessage(); playSoundEffect('send');}} // 送信ボタンを押したときの音を再生}
+                        onPress={sendMessage} // 送信ボタンを押したときの音を再生}
                         style={isSending ? [styles.buttonInRow, { backgroundColor: '#175C94' }] : styles.buttonInRow}
                         disabled={isSending} // 送信中はボタンを無効化
                       >
