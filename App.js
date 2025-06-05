@@ -3,10 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, TextInput, Alert, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, 
   TouchableWithoutFeedback, Keyboard, Modal, Text, Pressable, Image, ImageBackground, FlatList,
   Animated, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
-import initialMessagesData from './data/messages.json';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Application from 'expo-application';
 import * as Crypto from 'expo-crypto';
 import { Video, ResizeMode } from 'expo-av'; 
+import initialMessagesData from './data/messages.json';
 
 const windowWidth = Dimensions.get('window').width;
 const ASYNC_STORAGE_MESSAGES_KEY = '@MyApp:messages';
@@ -56,7 +57,7 @@ export default function App() {
   const settingsButtonRotateAnim = useRef(new Animated.Value(0)).current; // 0: 0度, 1: 180度 を表現
   const [userId, setUserId] = useState("unknown-user"); // 初期値は適当な文字列
   const [tempUserId, setTempUserId] = useState(userId);
-  const [serverIP, setServerIP] = useState('http://192.168.3.6:8000'); // デフォルト値
+  const [serverIP, setServerIP] = useState('http://192.168.3.7:8000'); // デフォルト値
   const [tempIP, setTempIP] = useState(serverIP);
   const [preferences, setPreferences] = useState({ emotion: "", custom: "" });
   const [tempEmotion, setTempEmotion] = useState(preferences.emotion);
@@ -683,13 +684,23 @@ export default function App() {
 
           {/* 設定モーダル */}
           <Modal visible={settingsVisible} animationType="slide" transparent={true}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              style={{ flex: 1 }} // KeyboardAvoidingView 自体もflex:1でスペースを取る
-              keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0} // ヘッダーなどがあればオフセット調整
-            >
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={styles.overlay}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={styles.overlay}>
+                <KeyboardAwareScrollView
+                  // ScrollViewと同様のスタイルやプロパティを設定可能
+                  style={{ width: '100%' }} // 親のoverlayいっぱいに広がる
+                  contentContainerStyle={{
+                    // このスタイルで、キーボードがない時にコンテンツを中央揃えにする
+                    flexGrow: 1,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                  // その他の便利なプロパティ
+                  enableOnAndroid={true} // Androidでも有効にする
+                  extraScrollHeight={Platform.OS === 'ios' ? 20 : 0} // キーボードと入力欄の間の追加の余白
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
                   <View style={styles.settingsModalContent}>
                     <Text style={styles.settingTitle}>設定</Text>
                     {/* --- ユーザーID (表示のみ) --- */}
@@ -741,80 +752,78 @@ export default function App() {
                       </Pressable>
                     </View>
                   </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
+                </KeyboardAwareScrollView>
+              </View>
+            </TouchableWithoutFeedback>
           </Modal>
 
           {/* 執筆モーダル */}
           <Modal visible={writingVisible} animationType="slide" transparent={true}>
-            <KeyboardAvoidingView
-              style={{ flex: 1 }}
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              keyboardVerticalOffset={0}
-            >
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={styles.overlay}>
-                  <ScrollView
-                    contentContainerStyle={{ 
-                      flexGrow: 1,
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                  >
-                    <Animated.View style={{ width: actualStationeryWidth, alignItems: 'center', transform: [{ translateY: slideAnim }] }}>
-                      <View style={{width: '100%', height: actualStationeryHeight}}>
-                        <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
-                          {/* 入力エリア */}
-                          <View style={{ flex: 1 }}>
-                            {/* タイトル入力欄 */}
-                            <TextInput
-                              style={styles.titleInput}
-                              placeholder="タイトルを入力 (任意)" // 未入力でも送信可能なので「任意」と示す
-                              value={title}
-                              onChangeText={setTitle}
-                              returnKeyType="next" // 次の入力欄へフォーカスを移すため（本文入力欄で対応が必要な場合あり）
-                              maxLength={50} // 例えば最大50文字など
-                            />
-
-                            {/* 本文入力欄 */}
-                            <TextInput
-                              style={styles.letterInput} // このスタイルに flex: 1 を持たせる
-                              multiline
-                              placeholder="ここにメッセージを入力"
-                              value={message}
-                              onChangeText={setMessage}
-                            />
-                          </View>
-                        </ImageBackground>
-                      </View>
-
-                      {/* ボタンエリア */}
-                      <View style={styles.buttonRowContainer}>
-                        <Pressable
-                          onPress={sendMessage}
-                          style={isSending ? [styles.buttonInRow, { backgroundColor: '#175C94' }] : styles.buttonInRow}
-                          disabled={isSending} // 送信中はボタンを無効化
-                        >
-                          <Text style={styles.buttonText}>{isSending ? '送信中…' : '送信する'}</Text>
-                        </Pressable>
-                        <Pressable onPress={() => {
-                          Animated.timing(slideAnim, {
-                            toValue: 800,
-                            duration: 300,
-                            useNativeDriver: true,
-                          }).start(() => setWritingVisible(false));
-                        }} style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}>
-                          <Text style={styles.buttonText}>キャンセル</Text>
-                        </Pressable>
-                      </View>
-                    </Animated.View>
-                  </ScrollView>
-                </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={styles.overlay}>
+                <KeyboardAwareScrollView
+                  // ScrollViewと同様のスタイルやプロパティを設定可能
+                  style={{ width: '100%' }} // 親のoverlayいっぱいに広がる
+                  contentContainerStyle={{
+                    // このスタイルで、キーボードがない時にコンテンツを中央揃えにする
+                    flexGrow: 1,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                  // その他の便利なプロパティ
+                  enableOnAndroid={true} // Androidでも有効にする
+                  extraScrollHeight={Platform.OS === 'ios' ? 20 : 0} // キーボードと入力欄の間の追加の余白
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  <Animated.View style={{ width: actualStationeryWidth, alignItems: 'center', transform: [{ translateY: slideAnim }] }}>
+                    <View style={{width: '100%', height: actualStationeryHeight}}>
+                      <ImageBackground source={require('./assets/letter.png')} style={styles.letterNote} resizeMode="stretch">
+                        {/* 入力エリア */}
+                        <View style={{ flex: 1 }}>
+                          {/* タイトル入力欄 */}
+                          <TextInput
+                            style={styles.titleInput}
+                            placeholder="タイトルを入力 (任意)" // 未入力でも送信可能なので「任意」と示す
+                            value={title}
+                            onChangeText={setTitle}
+                            returnKeyType="next" // 次の入力欄へフォーカスを移すため（本文入力欄で対応が必要な場合あり）
+                            maxLength={50} // 例えば最大50文字など
+                          />
+                          {/* 本文入力欄 */}
+                          <TextInput
+                            style={styles.letterInput} // このスタイルに flex: 1 を持たせる
+                            multiline
+                            placeholder="ここにメッセージを入力"
+                            value={message}
+                            onChangeText={setMessage}
+                          />
+                        </View>
+                      </ImageBackground>
+                    </View>
+                    {/* ボタンエリア */}
+                    <View style={styles.buttonRowContainer}>
+                      <Pressable
+                        onPress={sendMessage}
+                        style={isSending ? [styles.buttonInRow, { backgroundColor: '#175C94' }] : styles.buttonInRow}
+                        disabled={isSending} // 送信中はボタンを無効化
+                      >
+                        <Text style={styles.buttonText}>{isSending ? '送信中…' : '送信する'}</Text>
+                      </Pressable>
+                      <Pressable onPress={() => {
+                        Animated.timing(slideAnim, {
+                          toValue: 800,
+                          duration: 300,
+                          useNativeDriver: true,
+                        }).start(() => setWritingVisible(false));
+                      }} style={[styles.buttonInRow, { backgroundColor: '#AAA' }]}>
+                        <Text style={styles.buttonText}>キャンセル</Text>
+                      </Pressable>
+                    </View>
+                  </Animated.View>
+                </KeyboardAwareScrollView>
+              </View>
+            </TouchableWithoutFeedback>
           </Modal>
 
           {/* 手紙ボックスモーダル */}
@@ -1269,7 +1278,7 @@ const styles = StyleSheet.create({
   },
   newBottlesArea: { // 新しい瓶をまとめて表示するエリアのスタイル
     position: 'absolute',
-    bottom: 100, // 例: メイン操作ボタン群の上あたり
+    bottom: '15%', // 例: メイン操作ボタン群の上あたり
     left: 10,
     right: 10,
     flexDirection: 'row', // 横に並べる場合
