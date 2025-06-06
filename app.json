@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "bottleMail-client",
-    "slug": "bottleMail-client",
+    "name": "Dear Ocean",
+    "slug": "Dear Ocean",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon.png",
       "resizeMode": "cover",
       "backgroundColor": "#ffffff"
     },
@@ -17,10 +17,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.anonymous.bottleMailclient"
     },
     "androidStatusBar": {
       "translucent": true,

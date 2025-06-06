@@ -13,7 +13,7 @@ import * as Haptics from 'expo-haptics';
 
 import EmotionWheel from './EmotionWheel';
 import initialMessagesData from './data/messages.json';
-import styles, { actualStationeryWidth, actualStationeryHeight } from './styles';
+import styles, { actualStationeryWidth, actualStationeryHeight, actualShelfDisplayWidth, actualShelfDisplayHeight } from './styles';
 
 const ASYNC_STORAGE_MESSAGES_KEY = '@MyApp:messages';
 const ASYNC_STORAGE_PREFERENCES_KEY = '@MyApp:userPreferences';
@@ -152,7 +152,7 @@ export default function App() {
   const settingsButtonRotateAnim = useRef(new Animated.Value(0)).current; // 0: 0度, 1: 180度 を表現
   const [userId, setUserId] = useState("unknown-user"); // 初期値は適当な文字列
   const [tempUserId, setTempUserId] = useState(userId);
-  const [serverIP, setServerIP] = useState('http://192.168.3.7:8000'); // デフォルト値
+  const [serverIP, setServerIP] = useState('http://10.100.194.210:8000'); // デフォルト値
   const [tempIP, setTempIP] = useState(serverIP);
   const [preferences, setPreferences] = useState({ emotion: "", custom: "" });
   const [tempEmotion, setTempEmotion] = useState(preferences.emotion);
@@ -768,6 +768,152 @@ export default function App() {
   });
   const viewConfigRef = React.useRef({ viewAreaCoveragePercentThreshold: 50 });
 
+  // --- ホーム画面のアニメーション ---
+  const windowWidth = Dimensions.get('window').width;
+  const windowHeight = Dimensions.get('window').height
+
+  // --- 船のアニメーション ---
+  const boatTranslateX = useRef(new Animated.Value(-windowWidth*0.1)).current; // 画面左外からスタート
+  const boatRotate = useRef(new Animated.Value(0)).current; // 揺れの角度用
+  useEffect(() => {
+    let isMounted = true; // クリーンアップ後の不要な実行を防ぐフラグ
+
+    // 船の揺れアニメーション (常にループ)
+    const boatRockingAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(boatRotate, { toValue: 1, duration: 2500, useNativeDriver: true }),
+        Animated.timing(boatRotate, { toValue: -1, duration: 2500, useNativeDriver: true }),
+        Animated.timing(boatRotate, { toValue: 0, duration: 2500, useNativeDriver: true }),
+      ])
+    );
+
+    // 船の移動アニメーション (ランダムな間隔でループ)
+    const runBoatMovingSequence = () => {
+      if (!isMounted) return;
+
+      // 1. アニメーション開始前に船を画面左外にリセット
+      boatTranslateX.setValue(windowWidth * 1.2); // 船の幅を考慮して画面外に
+
+      // 2. 移動アニメーションを開始
+      Animated.timing(boatTranslateX, {
+        toValue: -windowWidth * 0.2, // 画面右外へ
+        duration: 50000,            // 移動速度を調整 (例: 50秒)。この値を大きくすると遅くなります。
+        useNativeDriver: true,
+      }).start(() => {
+        // 3. アニメーション完了後、次の開始までの待機時間をランダムに設定
+        if (isMounted) {
+          const randomDelay = Math.random() * 15000 + 5000; // 5000ms (5秒) ～ 20000ms (20秒) の間
+          console.log(`次の船の出現まで: ${Math.round(randomDelay / 1000)}秒`);
+          setTimeout(runBoatMovingSequence, randomDelay); // ★ ランダムな時間後に再度アニメーションを開始
+        }
+      });
+    };
+
+    boatRockingAnimation.start();
+    runBoatMovingSequence(); // 最初の移動を開始
+
+    return () => { // クリーンアップ
+      isMounted = false;
+      boatRockingAnimation.stop();
+      // boatTranslateX は stop() を呼ぶと途中で止まってしまうので、
+      // isMounted フラグで次のループが始まらないようにするだけでOK
+    };
+  }, []); // 初回マウント時のみ実行
+
+  const boatSpin = boatRotate.interpolate({
+    inputRange: [-1, 1],
+    outputRange: ['-5deg', '5deg'], // -5度から5度の間で揺れる
+  });
+
+  // --- カモメのアニメーション ---
+  const beta = 0.6;
+  const seagulls = [
+    { id: 1, offset: { x: 0 * beta, y: 0 * beta }, scale: 1.0 * beta, initialRotation: '-10deg' },
+    { id: 2, offset: { x: 60 * beta, y: 25 * beta }, scale: 0.8 * beta, initialRotation: '5deg' },
+    { id: 3, offset: { x: -50 * beta, y: 25 * beta }, scale: 1.1 * beta, initialRotation: '15deg' },
+    { id: 4, offset: { x: 30 * beta, y: 50 * beta }, scale: 0.9 * beta, initialRotation: '-5deg' },
+  ];
+
+  // 群れ全体の基準点と透明度
+  const flockOpacity = useRef(new Animated.Value(0)).current;
+  const flockTranslateX = useRef(new Animated.Value(0)).current;
+  const flockTranslateY = useRef(new Animated.Value(0)).current;
+  // 4羽それぞれの揺れを管理するアニメーション値の配列
+  const seagullRotateAnims = useRef(seagulls.map(() => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    // 個別のカモメの揺れアニメーション (常に実行) 
+    const rockingAnimations = seagulls.map((seagull, index) => {
+      // 各カモメに少しずつ違う揺れを与える
+      const duration = 600 + Math.random() * 600; // 1.2秒～1.8秒で揺れる
+      return Animated.loop(
+        Animated.sequence([
+          Animated.timing(seagullRotateAnims[index], { toValue: 1.0, duration, useNativeDriver: true }),
+          Animated.timing(seagullRotateAnims[index], { toValue: -1.0, duration, useNativeDriver: true }),
+          Animated.timing(seagullRotateAnims[index], { toValue: 0.0, duration, useNativeDriver: true }),
+        ])
+      );
+    });
+    Animated.parallel(rockingAnimations).start(); // 全員一斉に揺れ始める
+
+
+    // 群れ全体の出現・移動・消滅アニメーション (間欠的に実行)
+    const animateFlock = () => {
+      if (!isMounted) return;
+
+      // アニメーション開始前に初期状態へリセット
+      flockOpacity.setValue(0);
+      let startX = windowWidth * 0.2;
+      if (Math.random() > 0.5) {
+        startX = windowWidth * 0.7;
+      }
+      const startY = windowHeight * (Math.random() * 0.2 + 0.1); // 画面上部20%のランダムな高さ
+      flockTranslateX.setValue(startX);
+      flockTranslateY.setValue(startY);
+
+      const endX = startX + (windowWidth * (Math.random() * 0.3 - 0.15)); // 画面左外へ
+      const endY = startY + (windowWidth * (Math.random() * 0.1 - 0.05)); // 少し上下に揺らぎながら移動
+
+      // アニメーションのシーケンスを定義
+      Animated.sequence([
+        // (A) 少し待ってからフェードイン
+        Animated.delay(1000),
+        Animated.timing(flockOpacity, { toValue: 1, duration: 2000, useNativeDriver: true }),
+
+        // (B) 10秒かけて移動しながらフェードアウト
+        Animated.parallel([
+          Animated.timing(flockTranslateX, { toValue: endX, duration: 10000, useNativeDriver: true }),
+          Animated.timing(flockTranslateY, { toValue: endY, duration: 10000, useNativeDriver: true }),
+          // フェードアウトは少し遅れて開始
+          Animated.sequence([
+              Animated.delay(7000), // 7秒間は表示されたまま
+              Animated.timing(flockOpacity, { toValue: 0, duration: 3000, useNativeDriver: true }) // 残り3秒で消える
+          ])
+        ]),
+
+        // (C) 次の出現までの待機時間
+        Animated.delay(Math.random() * 4000 + 8000) // 8秒から12秒のランダムな待ち時間
+
+      ]).start(() => {
+        // 完了したら再度アニメーションを開始してループさせる
+        animateFlock();
+      });
+    };
+
+    // 最初の遅延（アプリ起動後すぐに出ないように）
+    setTimeout(() => {
+      animateFlock();
+    }, 2000); // 2秒後に初回開始
+
+    return () => {
+      isMounted = false; // クリーンアップ
+      rockingAnimations.forEach(anim => anim.stop());
+    };
+  }, []); // 初回マウント時のみ実行
+
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       {statusMessage ? (
@@ -1246,6 +1392,63 @@ export default function App() {
           </LinearGradient>
         </View>
       </Modal>
+
+      {/* ホーム画面の船アニメーション */}
+      <Animated.Image
+        source={require('./assets/boat.png')} // ★ 船の画像
+        style={[
+          styles.animatedBoat, // 下記で定義
+          {
+            transform: [
+              { translateX: boatTranslateX },
+              { rotate: boatSpin }
+            ]
+          }
+        ]}
+      />
+
+      {/* カモメの群れのアニメーション */}
+      <Animated.View style={[
+        styles.animatedFlockContainer, // 下記で定義
+        {
+          opacity: flockOpacity,
+          transform: [
+            { translateX: flockTranslateX },
+            { translateY: flockTranslateY }
+          ]
+        }
+      ]}>
+        {seagulls.map((seagull, index) => {
+          // 各カモメの揺れを計算
+          const spin = seagullRotateAnims[index].interpolate({
+            inputRange: [-1, 1],
+            outputRange: ['-8deg', '8deg'] // 揺れの角度
+          });
+          
+          return (
+            <Animated.Image
+              key={seagull.id}
+              source={require('./assets/seagull.png')} // ★ カモメのシルエット画像
+              style={[
+                styles.animatedSeagull, // 下記で定義
+                {
+                  // 群れの基準点からの相対位置
+                  left: seagull.offset.x,
+                  top: seagull.offset.y,
+                  // 各カモメの大きさを変える
+                  width: 50 * seagull.scale,
+                  height: 50 * seagull.scale,
+                  // 揺れアニメーションと初期角度を適用
+                  transform: [
+                    { rotate: spin },
+                    { rotate: seagull.initialRotation }
+                  ]
+                }
+              ]}
+            />
+          );
+        })}
+      </Animated.View>
     </SafeAreaView>
   );
 }

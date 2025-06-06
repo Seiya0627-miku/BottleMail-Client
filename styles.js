@@ -35,8 +35,8 @@ let MAX_SHELF_HEIGHT = 400 / shelfAspectRatio_H_W;
 let MAX_SHELF_WIDTH = windowWidth * 0.9; // 例: 90%
 
 // より小さい方を棚の実際の表示幅とする
-const actualShelfDisplayWidth = Math.min(MAX_SHELF_HEIGHT, MAX_SHELF_WIDTH);
-const actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
+export let actualShelfDisplayWidth = Math.min(MAX_SHELF_HEIGHT, MAX_SHELF_WIDTH);
+export let actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
 
 const styles = StyleSheet.create({
   container: {
@@ -256,6 +256,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
+  // 新しい瓶を表示するエリアのスタイル
   newBottlesArea: { // 新しい瓶をまとめて表示するエリアのスタイル
     position: 'absolute',
     bottom: '15%', // 例: メイン操作ボタン群の上あたり
@@ -293,6 +294,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
     fontWeight: 'bold',
   },
+  // 感情モーダルのスタイル
   emotionModalContent: {
     width: '90%',
     maxWidth: 350,
@@ -311,6 +313,30 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'white',
     marginBottom: 20,
+  },
+  // 背景アニメーション
+  animatedBoat: {
+    position: 'absolute',
+    width: '13%', // 船のサイズ (調整してください)
+    height: '13%', // 船のサイズ
+    resizeMode: 'contain',
+    top: '42%', // 画面の上から40%の位置 (海の高さに合わせて調整)
+    left: 0, // translateXで動かすので、初期のleftは0か画面外
+    transform: [{ translateX: -100 }], // 初期位置を画面左外に
+    zIndex: 5, // 他のUI要素との重なり順
+  },
+  animatedFlockContainer: { // 群れ全体の基準点となるコンテナ
+    position: 'absolute',
+    // width と height は内部要素で決まるので不要
+    zIndex: 4, // 船の後ろに配置
+    top: 0,    // 画面の上端に配置
+    left: 0,   // 画面の左端に配置
+    right: 0,  // 画面の右端まで広げる
+    bottom: 0, // 画面の下端まで広げる
+  },
+  animatedSeagull: { // 各カモメの基本スタイル
+    position: 'absolute', // 親(animatedFlockContainer)の中で絶対配置
+    resizeMode: 'contain',
   },
 });
 
