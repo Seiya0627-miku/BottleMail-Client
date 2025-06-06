@@ -847,7 +847,7 @@ export default function App() {
     // 個別のカモメの揺れアニメーション (常に実行) 
     const rockingAnimations = seagulls.map((seagull, index) => {
       // 各カモメに少しずつ違う揺れを与える
-      const duration = 1200 + Math.random() * 600; // 1.2秒～1.8秒で揺れる
+      const duration = 600 + Math.random() * 600; // 1.2秒～1.8秒で揺れる
       return Animated.loop(
         Animated.sequence([
           Animated.timing(seagullRotateAnims[index], { toValue: 1.0, duration, useNativeDriver: true }),
@@ -865,13 +865,16 @@ export default function App() {
 
       // アニメーション開始前に初期状態へリセット
       flockOpacity.setValue(0);
-      const startX = windowWidth * 0.2; // 画面右外からスタート
-      const startY = Math.random() * (windowHeight * 0.5); // 画面上部20%のランダムな高さ
+      let startX = windowWidth * 0.2;
+      if (Math.random() > 0.5) {
+        startX = windowWidth * 0.7;
+      }
+      const startY = windowHeight * (Math.random() * 0.2 + 0.1); // 画面上部20%のランダムな高さ
       flockTranslateX.setValue(startX);
       flockTranslateY.setValue(startY);
 
-      const endX = -100; // 画面左外へ
-      const endY = startY + (Math.random() * 100 - 50); // 少し上下に揺らぎながら移動
+      const endX = startX + (windowWidth * (Math.random() * 0.3 - 0.15)); // 画面左外へ
+      const endY = startY + (windowWidth * (Math.random() * 0.1 - 0.05)); // 少し上下に揺らぎながら移動
 
       // アニメーションのシーケンスを定義
       Animated.sequence([
@@ -891,7 +894,7 @@ export default function App() {
         ]),
 
         // (C) 次の出現までの待機時間
-        Animated.delay(Math.random() * 10000 + 8000) // 8秒から18秒のランダムな待ち時間
+        Animated.delay(Math.random() * 4000 + 8000) // 8秒から12秒のランダムな待ち時間
 
       ]).start(() => {
         // 完了したら再度アニメーションを開始してループさせる
@@ -909,6 +912,7 @@ export default function App() {
       rockingAnimations.forEach(anim => anim.stop());
     };
   }, []); // 初回マウント時のみ実行
+
 
   return (
     <SafeAreaView style={{ flex: 1 }}>

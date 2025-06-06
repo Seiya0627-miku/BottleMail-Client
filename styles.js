@@ -328,8 +328,11 @@ const styles = StyleSheet.create({
   animatedFlockContainer: { // 群れ全体の基準点となるコンテナ
     position: 'absolute',
     // width と height は内部要素で決まるので不要
-    zIndex: 6,
-    backgroundColor: 'white', // 群れの背景は透明
+    zIndex: 4, // 船の後ろに配置
+    top: 0,    // 画面の上端に配置
+    left: 0,   // 画面の左端に配置
+    right: 0,  // 画面の右端まで広げる
+    bottom: 0, // 画面の下端まで広げる
   },
   animatedSeagull: { // 各カモメの基本スタイル
     position: 'absolute', // 親(animatedFlockContainer)の中で絶対配置
