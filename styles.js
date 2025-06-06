@@ -38,6 +38,11 @@ let MAX_SHELF_WIDTH = windowWidth * 0.9; // 例: 90%
 export let actualShelfDisplayWidth = Math.min(MAX_SHELF_HEIGHT, MAX_SHELF_WIDTH);
 export let actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
 
+// クジラのサイズ設定
+const WHALE_ASPECT_RATIO = 439/268; // クジラ画像の縦横比 (例: 200px x 200px なら 1)
+const whaleWidth = Dimensions.get('window').width * 0.25;
+const whaleHeight = whaleWidth / WHALE_ASPECT_RATIO;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -340,15 +345,18 @@ const styles = StyleSheet.create({
   },
   animatedWhaleContainer: { // クジラと水しぶきをまとめるコンテナ
     position: 'absolute',
+    width: whaleWidth,
+    height: whaleHeight,
     alignItems: 'center', // クジラと水しぶきを水平中央に
-    justifyContent: 'center', // 垂直中央に配置
     zIndex: 6, // 船やカモメとの重なり順を調整
+    // backgroundColor: "rgba(0, 200, 0, 0.5)",
   },
-  animatedWhale: {
-    resizeMode: 'contain',
-  },
-  animatedWhaleSplash: {
-    position: 'absolute', // クジラの上に重ねる
+  whaleAndSplashImage: {
+    position: 'absolute', // 親(animatedWhaleContainer)の中で重ねる
+    top: 0,
+    left: 0,
+    width: '100%', // 親コンテナのサイズに追従
+    height: '100%',
     resizeMode: 'contain',
   },
 });
