@@ -40,6 +40,7 @@ expo --version
 以下の VS Code のターミナル（Powershell）に入力して実行すると Expo Go 用 の QR コードが生成される。Expo Go がインストールされているスマホのカメラで読み込めばアプリが起動する。
 
 ```
+$ npx expo prebuild
 $ npx expo start
 ```
 `Unable to find expo in this project - have you run yarn / npm install yet?`みたいな感じで怒られたら依存性の問題が出ているということらしいので、以下のコマンドを実行する。

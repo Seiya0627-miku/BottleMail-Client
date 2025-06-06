@@ -152,7 +152,7 @@ export default function App() {
   const settingsButtonRotateAnim = useRef(new Animated.Value(0)).current; // 0: 0度, 1: 180度 を表現
   const [userId, setUserId] = useState("unknown-user"); // 初期値は適当な文字列
   const [tempUserId, setTempUserId] = useState(userId);
-  const [serverIP, setServerIP] = useState('http://192.168.3.7:8000'); // デフォルト値
+  const [serverIP, setServerIP] = useState('http://10.100.194.210:8000'); // デフォルト値
   const [tempIP, setTempIP] = useState(serverIP);
   const [preferences, setPreferences] = useState({ emotion: "", custom: "" });
   const [tempEmotion, setTempEmotion] = useState(preferences.emotion);
@@ -768,6 +768,64 @@ export default function App() {
   });
   const viewConfigRef = React.useRef({ viewAreaCoveragePercentThreshold: 50 });
 
+  // --- ホーム画面のアニメーション ---
+  const windowWidth = Dimensions.get('window').width;
+
+  // 1. 船のアニメーション値
+  const boatTranslateX = useRef(new Animated.Value(-windowWidth*0.1)).current; // 画面左外からスタート
+  const boatRotate = useRef(new Animated.Value(0)).current; // 揺れの角度用
+  useEffect(() => {
+    let isMounted = true; // クリーンアップ後の不要な実行を防ぐフラグ
+
+    // --- 船の揺れアニメーション (常にループ) ---
+    const boatRockingAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(boatRotate, { toValue: 1, duration: 2500, useNativeDriver: true }),
+        Animated.timing(boatRotate, { toValue: -1, duration: 2500, useNativeDriver: true }),
+        Animated.timing(boatRotate, { toValue: 0, duration: 2500, useNativeDriver: true }),
+      ])
+    );
+
+    // --- 船の移動アニメーション (ランダムな間隔でループ) ---
+    const runBoatMovingSequence = () => {
+      if (!isMounted) return;
+
+      // 1. アニメーション開始前に船を画面左外にリセット
+      boatTranslateX.setValue(windowWidth * 1.2); // 船の幅を考慮して画面外に
+
+      // 2. 移動アニメーションを開始
+      Animated.timing(boatTranslateX, {
+        toValue: -windowWidth * 0.2, // 画面右外へ
+        duration: 50000,            // ★★★ 移動速度を調整 (例: 50秒)。この値を大きくすると遅くなります。
+        useNativeDriver: true,
+      }).start(() => {
+        // 3. アニメーション完了後、次の開始までの待機時間をランダムに設定
+        if (isMounted) {
+          const randomDelay = Math.random() * 15000 + 5000; // 5000ms (5秒) ～ 20000ms (20秒) の間
+          console.log(`次の船の出現まで: ${Math.round(randomDelay / 1000)}秒`);
+          setTimeout(runBoatMovingSequence, randomDelay); // ★ ランダムな時間後に再度アニメーションを開始
+        }
+      });
+    };
+
+    // --- アニメーションの開始 ---
+    boatRockingAnimation.start();
+    runBoatMovingSequence(); // 最初の移動を開始
+
+    // --- クリーンアップ ---
+    return () => {
+      isMounted = false;
+      boatRockingAnimation.stop();
+      // boatTranslateX は stop() を呼ぶと途中で止まってしまうので、
+      // isMounted フラグで次のループが始まらないようにするだけでOK
+    };
+  }, []); // 初回マウント時のみ実行
+
+  const boatSpin = boatRotate.interpolate({
+    inputRange: [-1, 1],
+    outputRange: ['-5deg', '5deg'], // -5度から5度の間で揺れる
+  });
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       {statusMessage ? (
@@ -1246,6 +1304,20 @@ export default function App() {
           </LinearGradient>
         </View>
       </Modal>
+
+      {/* ホーム画面の船アニメーション */}
+      <Animated.Image
+        source={require('./assets/boat.png')} // ★ 船の画像
+        style={[
+          styles.animatedBoat, // 下記で定義
+          {
+            transform: [
+              { translateX: boatTranslateX },
+              { rotate: boatSpin }
+            ]
+          }
+        ]}
+      />
     </SafeAreaView>
   );
 }

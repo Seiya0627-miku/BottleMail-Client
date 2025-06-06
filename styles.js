@@ -256,6 +256,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
+  // 新しい瓶を表示するエリアのスタイル
   newBottlesArea: { // 新しい瓶をまとめて表示するエリアのスタイル
     position: 'absolute',
     bottom: '15%', // 例: メイン操作ボタン群の上あたり
@@ -293,6 +294,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
     fontWeight: 'bold',
   },
+  // 感情モーダルのスタイル
   emotionModalContent: {
     width: '90%',
     maxWidth: 350,
@@ -311,6 +313,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'white',
     marginBottom: 20,
+  },
+  // 背景アニメーション
+  animatedBoat: {
+    position: 'absolute',
+    width: '13%', // 船のサイズ (調整してください)
+    height: '13%', // 船のサイズ
+    resizeMode: 'contain',
+    top: '42%', // 画面の上から40%の位置 (海の高さに合わせて調整)
+    left: 0, // translateXで動かすので、初期のleftは0か画面外
+    transform: [{ translateX: -100 }], // 初期位置を画面左外に
+    zIndex: 5, // 他のUI要素との重なり順
   },
 });
 
