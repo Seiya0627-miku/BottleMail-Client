@@ -847,10 +847,11 @@ export default function App() {
     // 個別のカモメの揺れアニメーション (常に実行) 
     const rockingAnimations = seagulls.map((seagull, index) => {
       // 各カモメに少しずつ違う揺れを与える
-      const duration = 600 + Math.random() * 600; // 1.2秒～1.8秒で揺れる
+      const duration = 300 + Math.random() * 300; // 1.2秒～1.8秒で揺れる
       return Animated.loop(
         Animated.sequence([
           Animated.timing(seagullRotateAnims[index], { toValue: 1.0, duration, useNativeDriver: true }),
+          Animated.timing(seagullRotateAnims[index], { toValue: 0.0, duration, useNativeDriver: true }),
           Animated.timing(seagullRotateAnims[index], { toValue: -1.0, duration, useNativeDriver: true }),
           Animated.timing(seagullRotateAnims[index], { toValue: 0.0, duration, useNativeDriver: true }),
         ])
@@ -869,7 +870,7 @@ export default function App() {
       if (Math.random() > 0.5) {
         startX = windowWidth * 0.7;
       }
-      const startY = windowHeight * (Math.random() * 0.2 + 0.1); // 画面上部20%のランダムな高さ
+      const startY = windowHeight * (Math.random() * 0.1 + 0.2); // 画面上部20%のランダムな高さ
       flockTranslateX.setValue(startX);
       flockTranslateY.setValue(startY);
 
@@ -913,6 +914,82 @@ export default function App() {
     };
   }, []); // 初回マウント時のみ実行
 
+  // --- クジラのアニメーション ---
+  const whaleOpacity = useRef(new Animated.Value(0)).current;
+  const whaleTranslateX = useRef(new Animated.Value(0)).current;
+  const whaleTranslateY = useRef(new Animated.Value(0)).current;
+  const splashOpacity = useRef(new Animated.Value(0)).current; // 水しぶき用
+  
+  useEffect(() => {
+    let isMounted = true; // クリーンアップ後の不要な実行を防ぐフラグ
+
+    const animateWhale = () => {
+      if (!isMounted) return;
+
+      // --- アニメーションの準備 ---
+      // 1. 開始・終了位置と各種時間を定義
+      const startX = windowWidth * 0.1;
+      const endX = windowWidth * 0.3; 
+      const startY = windowHeight * 0.5;
+
+      // 2. アニメーション開始前に値をリセット
+      whaleOpacity.setValue(0);
+      splashOpacity.setValue(0);
+      whaleTranslateX.setValue(startX);
+      whaleTranslateY.setValue(startY); // Y座標は今回は固定
+
+      // --- アニメーションの実行 ---
+      // クジラの移動と、透明度/水しぶきの変化は並行して実行する
+      Animated.parallel([
+        // (A) クジラの移動アニメーション (終始動き続ける)
+        Animated.timing(whaleTranslateX, {
+          toValue: endX,
+          duration: 10000,
+          useNativeDriver: true,
+        }),
+
+        // (B) クジラの透明度と水しぶきのシーケンスアニメーション
+        Animated.sequence([
+          // 1. クジラがフェードイン
+          Animated.timing(whaleOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          // 2. 水しぶきが表示されるまで待機
+          Animated.delay(3000), // 3秒後に水しぶきを表示
+          // 3. 水しぶきのアニメーション (フェードイン → 表示維持 → フェードアウト)
+          Animated.sequence([
+            Animated.timing(splashOpacity, { toValue: 0.8, duration: 500, useNativeDriver: true }),
+            Animated.delay(1000), // 表示維持 (フェードイン/アウトの時間を引く)
+            Animated.timing(splashOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+          ]),
+          // 4. クジラがフェードアウトするまで待機
+          Animated.delay(2000),
+          // 5. クジラがフェードアウト
+          Animated.timing(whaleOpacity, { toValue: 0, duration: 1000, useNativeDriver: true }),
+        ]),
+      ]).start(() => {
+        // 完了したら、次の出現までのランダムな待機時間を経て再度アニメーションを開始
+        if (isMounted) {
+          const nextAppearanceDelay = Math.random() * 15000 + 10000; // 10秒～25秒後
+          console.log(`次のクジラの出現まで: ${Math.round(nextAppearanceDelay / 1000)}秒`);
+          setTimeout(animateWhale, nextAppearanceDelay);
+        }
+      });
+    };
+
+    // 最初の遅延（アプリ起動後すぐに出ないように）
+    const initialWhaleDelay = setTimeout(() => {
+      animateWhale();
+    }, 5000); // 5秒後に初回開始
+
+    // クリーンアップ関数
+    return () => {
+      isMounted = false;
+      clearTimeout(initialWhaleDelay);
+      whaleTranslateX.stopAnimation();
+      whaleTranslateY.stopAnimation();
+      whaleOpacity.stopAnimation();
+      splashOpacity.stopAnimation();
+    };
+  }, []);
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -1448,6 +1525,32 @@ export default function App() {
             />
           );
         })}
+      </Animated.View>
+
+      {/* クジラと水しぶきのアニメーションコンテナ */}
+      <Animated.View style={[
+        styles.animatedWhaleContainer, // 下記で定義
+        {
+          opacity: whaleOpacity,
+          transform: [
+            { translateX: whaleTranslateX },
+            { translateY: whaleTranslateY }
+          ]
+        }
+      ]}>
+        {/* クジラの画像 */}
+        <Image
+          source={require('./assets/whale.png')}
+          style={styles.whaleAndSplashImage} // ★ 共通スタイルを適用
+        />
+        {/* 水しぶきの画像 */}
+        <Animated.Image
+          source={require('./assets/splash.png')}
+          style={[
+            styles.whaleAndSplashImage, // ★ 共通スタイルを適用
+            { opacity: splashOpacity } // 透明度のアニメーションは個別に行う
+          ]}
+        />
       </Animated.View>
     </SafeAreaView>
   );

@@ -38,6 +38,11 @@ let MAX_SHELF_WIDTH = windowWidth * 0.9; // 例: 90%
 export let actualShelfDisplayWidth = Math.min(MAX_SHELF_HEIGHT, MAX_SHELF_WIDTH);
 export let actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
 
+// クジラのサイズ設定
+const WHALE_ASPECT_RATIO = 439/268; // クジラ画像の縦横比 (例: 200px x 200px なら 1)
+const whaleWidth = Dimensions.get('window').width * 0.25;
+const whaleHeight = whaleWidth / WHALE_ASPECT_RATIO;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -320,7 +325,7 @@ const styles = StyleSheet.create({
     width: '13%', // 船のサイズ (調整してください)
     height: '13%', // 船のサイズ
     resizeMode: 'contain',
-    top: '42%', // 画面の上から40%の位置 (海の高さに合わせて調整)
+    top: '45%', // 画面の上から40%の位置 (海の高さに合わせて調整)
     left: 0, // translateXで動かすので、初期のleftは0か画面外
     transform: [{ translateX: -100 }], // 初期位置を画面左外に
     zIndex: 5, // 他のUI要素との重なり順
@@ -336,6 +341,22 @@ const styles = StyleSheet.create({
   },
   animatedSeagull: { // 各カモメの基本スタイル
     position: 'absolute', // 親(animatedFlockContainer)の中で絶対配置
+    resizeMode: 'contain',
+  },
+  animatedWhaleContainer: { // クジラと水しぶきをまとめるコンテナ
+    position: 'absolute',
+    width: whaleWidth,
+    height: whaleHeight,
+    alignItems: 'center', // クジラと水しぶきを水平中央に
+    zIndex: 6, // 船やカモメとの重なり順を調整
+    // backgroundColor: "rgba(0, 200, 0, 0.5)",
+  },
+  whaleAndSplashImage: {
+    position: 'absolute', // 親(animatedWhaleContainer)の中で重ねる
+    top: 0,
+    left: 0,
+    width: '100%', // 親コンテナのサイズに追従
+    height: '100%',
     resizeMode: 'contain',
   },
 });
