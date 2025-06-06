@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "bottleMail-client",
-    "slug": "bottleMail-client",
+    "name": "Dear Ocean",
+    "slug": "Dear Ocean",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

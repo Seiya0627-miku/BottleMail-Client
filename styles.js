@@ -35,8 +35,8 @@ let MAX_SHELF_HEIGHT = 400 / shelfAspectRatio_H_W;
 let MAX_SHELF_WIDTH = windowWidth * 0.9; // 例: 90%
 
 // より小さい方を棚の実際の表示幅とする
-const actualShelfDisplayWidth = Math.min(MAX_SHELF_HEIGHT, MAX_SHELF_WIDTH);
-const actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
+export let actualShelfDisplayWidth = Math.min(MAX_SHELF_HEIGHT, MAX_SHELF_WIDTH);
+export let actualShelfDisplayHeight = actualShelfDisplayWidth * shelfAspectRatio_H_W;
 
 const styles = StyleSheet.create({
   container: {
@@ -324,6 +324,16 @@ const styles = StyleSheet.create({
     left: 0, // translateXで動かすので、初期のleftは0か画面外
     transform: [{ translateX: -100 }], // 初期位置を画面左外に
     zIndex: 5, // 他のUI要素との重なり順
+  },
+  animatedFlockContainer: { // 群れ全体の基準点となるコンテナ
+    position: 'absolute',
+    // width と height は内部要素で決まるので不要
+    zIndex: 6,
+    backgroundColor: 'white', // 群れの背景は透明
+  },
+  animatedSeagull: { // 各カモメの基本スタイル
+    position: 'absolute', // 親(animatedFlockContainer)の中で絶対配置
+    resizeMode: 'contain',
   },
 });
 
