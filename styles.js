@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     width: '13%', // 船のサイズ (調整してください)
     height: '13%', // 船のサイズ
     resizeMode: 'contain',
-    top: '42%', // 画面の上から40%の位置 (海の高さに合わせて調整)
+    top: '45%', // 画面の上から40%の位置 (海の高さに合わせて調整)
     left: 0, // translateXで動かすので、初期のleftは0か画面外
     transform: [{ translateX: -100 }], // 初期位置を画面左外に
     zIndex: 5, // 他のUI要素との重なり順
@@ -336,6 +336,19 @@ const styles = StyleSheet.create({
   },
   animatedSeagull: { // 各カモメの基本スタイル
     position: 'absolute', // 親(animatedFlockContainer)の中で絶対配置
+    resizeMode: 'contain',
+  },
+  animatedWhaleContainer: { // クジラと水しぶきをまとめるコンテナ
+    position: 'absolute',
+    alignItems: 'center', // クジラと水しぶきを水平中央に
+    justifyContent: 'center', // 垂直中央に配置
+    zIndex: 6, // 船やカモメとの重なり順を調整
+  },
+  animatedWhale: {
+    resizeMode: 'contain',
+  },
+  animatedWhaleSplash: {
+    position: 'absolute', // クジラの上に重ねる
     resizeMode: 'contain',
   },
 });

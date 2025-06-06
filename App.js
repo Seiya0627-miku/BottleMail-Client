@@ -18,6 +18,23 @@ import styles, { actualStationeryWidth, actualStationeryHeight, actualShelfDispl
 const ASYNC_STORAGE_MESSAGES_KEY = '@MyApp:messages';
 const ASYNC_STORAGE_PREFERENCES_KEY = '@MyApp:userPreferences';
 
+const WHALE_BASE_WIDTH = Dimensions.get('window').width * 0.2; // クジラの基準幅を画面幅の40%に設定
+const WHALE_ASPECT_RATIO = 156 / 439; // クジラ画像の縦横比 (例: 200px x 200px なら 1)
+
+const SPLASH_WIDTH_RATIO = 0.5; // 水しぶきはクジラの幅の50%の大きさ
+const SPLASH_ASPECT_RATIO = 1;  // 水しぶき画像の縦横比
+const SPLASH_OFFSET_X_RATIO = 0.5;
+const SPLASH_OFFSET_Y_RATIO = 0.3; // 水しぶきをクジラの高さの25%分だけ「上」にずらす
+
+// --- 最終的な値を計算 ---
+const whaleWidth = WHALE_BASE_WIDTH;
+const whaleHeight = whaleWidth / WHALE_ASPECT_RATIO;
+
+const splashWidth = whaleWidth * SPLASH_WIDTH_RATIO;
+const splashHeight = splashWidth / SPLASH_ASPECT_RATIO;
+const splashOffsetX = whaleWidth * SPLASH_OFFSET_X_RATIO; // X軸のオフセット値
+const splashOffsetY = whaleHeight * SPLASH_OFFSET_Y_RATIO; // Y軸のオフセット値
+
 export default function App() {
   const [emotionModalVisible, setEmotionModalVisible] = useState(false); // 感情選択モーダルの表示状態
 
@@ -847,7 +864,7 @@ export default function App() {
     // 個別のカモメの揺れアニメーション (常に実行) 
     const rockingAnimations = seagulls.map((seagull, index) => {
       // 各カモメに少しずつ違う揺れを与える
-      const duration = 600 + Math.random() * 600; // 1.2秒～1.8秒で揺れる
+      const duration = 400 + Math.random() * 300; // 1.2秒～1.8秒で揺れる
       return Animated.loop(
         Animated.sequence([
           Animated.timing(seagullRotateAnims[index], { toValue: 1.0, duration, useNativeDriver: true }),
@@ -913,6 +930,89 @@ export default function App() {
     };
   }, []); // 初回マウント時のみ実行
 
+  // --- クジラのアニメーション ---
+  const whaleOpacity = useRef(new Animated.Value(0)).current;
+  const whaleTranslateX = useRef(new Animated.Value(0)).current;
+  const whaleTranslateY = useRef(new Animated.Value(0)).current;
+  const splashOpacity = useRef(new Animated.Value(0)).current; // 水しぶき用
+  
+  useEffect(() => {
+    let isMounted = true; // クリーンアップ後の不要な実行を防ぐフラグ
+
+    const animateWhale = () => {
+      if (!isMounted) return;
+
+      // --- アニメーションの準備 ---
+      // 1. 開始・終了位置と各種時間を定義
+      const startX = windowWidth * 0.1; // 画面左外からスタート
+      const endX = windowWidth * 0.4; // 画面右外へ
+      const startY = windowHeight * 0.4; // 画面の高さの55%あたりに出現
+
+      const whaleMoveDuration = 10000; // クジラが画面を横切る時間 (12秒)
+      const whaleFadeInDuration = 1000; // 2秒かけてフェードイン
+      const whaleFadeOutDuration = 1000; // 2秒かけてフェードアウト
+      const splashAppearDelay = 3000;   // クジラ出現から水しぶき出現までの時間 (3秒)
+      const splashDuration = 2000;      // 水しぶきが表示されている時間 (2秒)
+      const whaleFadeOutDelay = 2000;   // 水しぶきが消えてからクジラが消え始めるまでの時間 (2秒)
+
+      // 2. アニメーション開始前に値をリセット
+      whaleOpacity.setValue(0);
+      splashOpacity.setValue(0);
+      whaleTranslateX.setValue(startX);
+      whaleTranslateY.setValue(startY); // Y座標は今回は固定
+
+      // --- アニメーションの実行 ---
+      // クジラの移動と、透明度/水しぶきの変化は並行して実行する
+      Animated.parallel([
+        // (A) クジラの移動アニメーション (終始動き続ける)
+        Animated.timing(whaleTranslateX, {
+          toValue: endX,
+          duration: whaleMoveDuration,
+          useNativeDriver: true,
+        }),
+
+        // (B) クジラの透明度と水しぶきのシーケンスアニメーション
+        Animated.sequence([
+          // 1. クジラがフェードイン
+          Animated.timing(whaleOpacity, { toValue: 1, duration: whaleFadeInDuration, useNativeDriver: true }),
+          // 2. 水しぶきが表示されるまで待機
+          Animated.delay(splashAppearDelay),
+          // 3. 水しぶきのアニメーション (フェードイン → 表示維持 → フェードアウト)
+          Animated.sequence([
+            Animated.timing(splashOpacity, { toValue: 0.8, duration: 500, useNativeDriver: true }),
+            Animated.delay(splashDuration - 1000), // 表示維持 (フェードイン/アウトの時間を引く)
+            Animated.timing(splashOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+          ]),
+          // 4. クジラがフェードアウトするまで待機
+          Animated.delay(whaleFadeOutDelay),
+          // 5. クジラがフェードアウト
+          Animated.timing(whaleOpacity, { toValue: 0, duration: whaleFadeOutDuration, useNativeDriver: true }),
+        ]),
+      ]).start(() => {
+        // 完了したら、次の出現までのランダムな待機時間を経て再度アニメーションを開始
+        if (isMounted) {
+          const nextAppearanceDelay = Math.random() * 15000 + 10000; // 10秒～25秒後
+          console.log(`次のクジラの出現まで: ${Math.round(nextAppearanceDelay / 1000)}秒`);
+          setTimeout(animateWhale, nextAppearanceDelay);
+        }
+      });
+    };
+
+    // 最初の遅延（アプリ起動後すぐに出ないように）
+    const initialWhaleDelay = setTimeout(() => {
+      animateWhale();
+    }, 5000); // 5秒後に初回開始
+
+    // クリーンアップ関数
+    return () => {
+      isMounted = false;
+      clearTimeout(initialWhaleDelay);
+      whaleTranslateX.stopAnimation();
+      whaleTranslateY.stopAnimation();
+      whaleOpacity.stopAnimation();
+      splashOpacity.stopAnimation();
+    };
+  }, []);
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
@@ -1448,6 +1548,41 @@ export default function App() {
             />
           );
         })}
+      </Animated.View>
+
+      {/* クジラと水しぶきのアニメーションコンテナ */}
+      <Animated.View style={[
+        styles.animatedWhaleContainer, // 下記で定義
+        {
+          opacity: whaleOpacity,
+          transform: [
+            { translateX: whaleTranslateX },
+            { translateY: whaleTranslateY }
+          ]
+        }
+      ]}>
+        {/* (A) クジラの画像 (このコンテナ内で静的に配置) */}
+        <Image
+          source={require('./assets/whale.png')}
+          style={[
+            styles.animatedWhale,
+            { width: whaleWidth, height: whaleHeight } // ★ 計算したサイズを適用
+          ]}
+        />
+        {/* (B) 水しぶきの画像 (クジラの上に重ねて、独自の透明度アニメーションを持つ) */}
+        <Animated.Image
+          source={require('./assets/splash.png')} // ★ 水しぶきの画像
+          style={[
+            styles.animatedWhaleSplash,
+            {
+              opacity: splashOpacity,
+              width: splashWidth,     // ★ 計算したサイズを適用
+              height: splashHeight,    // ★ 計算したサイズを適用
+              left: splashOffsetX,    // ★ 計算したX軸オフセットを適用
+              top: splashOffsetY,      // ★ 計算したY軸オフセットを適用
+            }
+          ]}
+        />
       </Animated.View>
     </SafeAreaView>
   );
