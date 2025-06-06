@@ -870,7 +870,7 @@ export default function App() {
       if (Math.random() > 0.5) {
         startX = windowWidth * 0.7;
       }
-      const startY = windowHeight * (Math.random() * 0.2 + 0.1); // 画面上部20%のランダムな高さ
+      const startY = windowHeight * (Math.random() * 0.1 + 0.2); // 画面上部20%のランダムな高さ
       flockTranslateX.setValue(startX);
       flockTranslateY.setValue(startY);
 
