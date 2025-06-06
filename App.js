@@ -152,7 +152,7 @@ export default function App() {
   const settingsButtonRotateAnim = useRef(new Animated.Value(0)).current; // 0: 0度, 1: 180度 を表現
   const [userId, setUserId] = useState("unknown-user"); // 初期値は適当な文字列
   const [tempUserId, setTempUserId] = useState(userId);
-  const [serverIP, setServerIP] = useState('http://10.100.194.210:8000'); // デフォルト値
+  const [serverIP, setServerIP] = useState('http://192.168.3.7:8000'); // デフォルト値
   const [tempIP, setTempIP] = useState(serverIP);
   const [preferences, setPreferences] = useState({ emotion: "", custom: "" });
   const [tempEmotion, setTempEmotion] = useState(preferences.emotion);
@@ -488,7 +488,7 @@ export default function App() {
         clearInterval(intervalId);
       };
     }
-  }, [userId, serverIP, arrivedBottle, soundsLoaded]);
+  }, [userId, serverIP, soundsLoaded]);
 
   // 新しく届いた瓶をホーム画面から開封する
   const [messageToOpenDetails, setMessageToOpenDetails] = useState(null);
@@ -1369,6 +1369,7 @@ export default function App() {
                                 }
                                 return currentMessages;
                               });
+                              setArrivedBottle(null);
                               fadeOut();
                             } else {
                               Alert.alert("エラー", "手紙の開封状態の更新に失敗しました。");
