@@ -477,7 +477,7 @@ export default function App() {
   };
 
   // ポーリング
-  const POLLING_INTERVAL = 20000; // 20秒ごと (お好みで調整)
+  const POLLING_INTERVAL = 1000; // 20秒ごと (お好みで調整)
   useEffect(() => {
     if (userId && userId !== 'unknown-user' && userId !== '' && serverIP && !arrivedBottle && soundsLoaded) {
       console.log(`ポーリングを開始します (ユーザーID: ${userId})`);
@@ -488,7 +488,7 @@ export default function App() {
         clearInterval(intervalId);
       };
     }
-  }, [userId, serverIP, soundsLoaded]);
+  }, [userId, serverIP, soundsLoaded, arrivedBottle]);
 
   // 新しく届いた瓶をホーム画面から開封する
   const [messageToOpenDetails, setMessageToOpenDetails] = useState(null);
@@ -1426,9 +1426,7 @@ export default function App() {
                   });
                   fadeAnim.setValue(0); // 手紙を読むモーダルのアニメーション値をリセット
                   fadeIn();             // 手紙を読むモーダルをフェードイン (既存の関数)
-
-                  // ホーム画面の arrivedBottle をクリア (ここで処理するのが確実)
-                  setArrivedBottle(null);
+                  
                   // arrivedBottleOpacityAnim もリセット
                   arrivedBottleOpacityAnim.setValue(0);
                 }
@@ -1456,10 +1454,10 @@ export default function App() {
       >
         <View style={styles.overlay}>
           <LinearGradient
-            colors={['#rgb(129, 50, 163)', 'rgb(91, 64, 198)']} // ★ グラデーションの色 (上:ラベンダー, 下:ライラック)
+            colors={['#rgb(75, 178, 252)', 'rgb(255, 205, 124)']} // ★ グラデーションの色 (上:ラベンダー, 下:ライラック)
             style={styles.emotionModalContent} // ★ 既存のスタイルを適用
           >
-            <Text style={styles.emotionModalTitle}>最近はどんな気分？</Text>
+            <Text style={styles.emotionModalTitle}>今の気分は？</Text>
             <EmotionWheel onEmotionSelect={handleEmotionSelect} />
             {/* <Pressable
               style={[styles.button, { backgroundColor: '#AAA', position: 'absolute', bottom:0}]}

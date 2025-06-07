@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
     width: '13%', // 船のサイズ (調整してください)
     height: '13%', // 船のサイズ
     resizeMode: 'contain',
-    top: '45%', // 画面の上から40%の位置 (海の高さに合わせて調整)
+    bottom: '45%', // 画面の上から40%の位置 (海の高さに合わせて調整)
     left: 0, // translateXで動かすので、初期のleftは0か画面外
     transform: [{ translateX: -100 }], // 初期位置を画面左外に
     zIndex: 5, // 他のUI要素との重なり順
